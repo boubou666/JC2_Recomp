@@ -52,6 +52,26 @@ Same as the other ports on the fork (TLOTR_TTA_Recomp scripts): `extract_iso.sh`
    sectors to `0x97F1E0` from the loader thread (2, `0x150A60`). The main thread then waits in `WaitSema`
    (`0x119F20`, called from `0x485BD0` on the semaphore its argument points to) for the rest of the run.
    Inlined-stub scan (FFOP's generic recompiler bug: a stub address turned into a goto label): 0 in JC2.
+4. Why it waits (boots 4-5, `PS2X_STATE_DUMP` and `JC2_TRACE_SYNC=1`): both EE threads wait on semaphore 4, and
+   the IOP has run no instruction (JC2 loads no module yet). Semaphore 4 (`0x6C4764`) is the loader's mutex and
+   semaphore 5 (`0x6C4768`) its request event; the helpers are wait `0x485BD0(&id)` and signal `0x485C30(&id, isr)`.
+   The loader (thread 2) takes the mutex and issues `sceCdRead`; the HLE completes it at once and queued the
+   `sceCdCallback` function `0x1509E0` as an interrupt, which ran on top of the loader (thread=2, ra=0) before
+   `sceCdRead` returned. Its first step is to take the mutex the loader holds: deadlock, and the main thread queues
+   behind it. On hardware `sceCdInitEeCB` gives libcdvd a callback thread, which just waits for the release; the
+   runtime's `sceCdInitEeCB` did nothing. Fork fix on `jc2/cd-callback-thread`: `sceCdInitEeCB(priority, stack,
+   size)` creates that thread, and read completions start the callback on it (one at a time).
+5. Boot 6, on the fix: the CD callback now runs on its own thread (3), and the first overlay image is captured
+   (`build/overlays/ovl_fa0b7fafeef6b3f2.bin`, 0x40000 bytes at 0x940000). Still stuck, differently: the loader
+   (2) waits on semaphore 5 while it holds mutex 4, and the callback, which signals 5, waits for 4 (main too).
+   Just before, the loader's `SignalSema(4)` (`0x485C30` from `0x15036C`) returned -1, a signal refused as over
+   the maximum: if the runtime has the wrong maximum for 4, a release is lost there. Boot 7 traces `CreateSema`.
+6. Boot 7 (`CreateSema` traced): semaphores 1-4 are all `init 1, max 1` (4 from `0x485B10`, the mutex). The
+   runtime reads them right; JC2 just signals over the maximum as a matter of course (the first `SignalSema`, on
+   3, already returns -420 `KE_SEMA_OVF`). With the maximum enforced, the loader's release-before-take of mutex 4
+   is dropped, it then holds the only token while it waits on 5, and the callback, which signals 5, can never
+   take 4: a deadlock that does not depend on timing. The retail game runs, so the EE kernel most likely does not
+   cap the count. Fork branch `jc2/ee-sema-overflow`: EE `SignalSema` counts past `max_count` (IOP untouched).
 
 ## Overlays (plan)
 
@@ -72,3 +92,15 @@ Same as the other ports on the fork (TLOTR_TTA_Recomp scripts): `extract_iso.sh`
 - Heap corruption suspect (room, FFOP): if the runtime switches EE threads where hardware never would, two threads
   can carve the same newlib chunk (`__malloc_lock` is a no-op in many PS2 builds). JC2 has a second thread from
   boot (entry `0x150A60`): suspect it first if JC2 shows overlapping allocations.
+- To pick up: fork main `0a62202b..61788601` (VU1 AOT about 2.8x faster on the exact path; SC3 40 -> 60 fps). Update
+  the submodule, rerun `scripts/recomp.sh` (ps2_vu_aot), full rebuild. Batched with the next runtime change.
+- If JC2 dies with "EE invocation stack space exhausted" (VP2S): `EeScheduler::invocationStackTop` keeps one 16 KiB
+  stack per (thread, nesting depth) forever, from the reserved range past its HLE pools; enlarge the range.
+- Possible generic VU1 race (FFOP, after main's vu1/aot-speed): an intermittent endless microprogram with garbage
+  lower ops, as if a fragment was not refreshed after an upload. If JC2 hits a VU1 stall, dump VU1 code memory.
+- With `jc2/ee-sema-overflow` (sc3-port): a vblank or interrupt handler that `iSignalSema`s a max-1 semaphore every
+  field now accumulates signals while its waiter is late, so the waiter catches up back to back. Doubled game
+  ticks after a hitch would point here.
+- Sound, expected later (FFOP, room): LIBSD `sceSdVoiceTrans`/`sceSdBlockTrans` stuck busy (-201) and a sound thread
+  waiting forever on a semaphore, as if the SPU2 DMA completion interrupt (IOP DMA 4/7) or the handler set with
+  `sceSdSetTransIntrHandler` never fires. JC2 loads Sony LIBSD (and Genki's M2SOUND/MODHSYN/MODMIDI on top).
