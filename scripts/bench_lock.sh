@@ -1,47 +1,18 @@
 #!/usr/bin/env bash
-# The bench lock shared by the PS2Recomp ports on one machine (TMB, VP2S, Drakengard, ...): a timed game run or
-# benchmark only starts when the lock file is empty and no other port's game is running, and holds the file meanwhile.
-# Heavy builds take no lock, but should not start while someone is measuring.
+# The bench lock shared by the PS2Recomp ports on this machine, through the fork's PS2Recomp/tools/bench_lock.sh:
+# a timed game run or benchmark only starts when the lock is free, and holds it meanwhile. Heavy builds take no lock,
+# but should not start while someone is measuring.
 #   scripts/bench_lock.sh wait                         # until the lock is free
-#   scripts/bench_lock.sh take <minutes> "<purpose>"   # wait, then write "jc2 until HH:MM (purpose)"
-#   scripts/bench_lock.sh release                      # empty it (only if it is ours)
 #   scripts/bench_lock.sh status
-# BENCH_LOCK overrides the path (default D:/ps2recomp_bench.lock on Windows, /tmp/ps2recomp_bench.lock elsewhere).
+# Runs go through scripts/bench_run.sh, which takes and releases the lock around one command.
+# Takes and releases are announced in the c2c f2f lane when the local hook build/announce.sh exists (not committed:
+# it holds the room connection).
 source "$(dirname "$0")/common.sh"
-if [ -n "$EXE" ]; then LOCK="${BENCH_LOCK:-/d/ps2recomp_bench.lock}"; else LOCK="${BENCH_LOCK:-/tmp/ps2recomp_bench.lock}"; fi
-NAME="jc2"
-
-# An emptied lock may keep a newline (echo > file): only non-whitespace content counts as taken.
-held() { [ -f "$LOCK" ] && grep -q '[^[:space:]]' "$LOCK"; }
-# Another port's game: every port runs ps2EntryRunner or its own <port>.exe build of it.
-game_running() {
-    if [ -n "$EXE" ]; then
-        tasklist.exe 2>/dev/null | grep -qiE '^(ps2EntryRunner|vp2s|tmb|drakengard)[^ ]*\.exe'
-    else
-        pgrep -f ps2EntryRunner >/dev/null 2>&1
-    fi
-}
-# Announces takes and releases in the room's side lane: build/announce.sh <text> is a local hook (not committed, it
-# holds the room connection), skipped when absent. A failed announcement never blocks the lock.
-announce() { [ -x "$ROOT/build/announce.sh" ] && "$ROOT/build/announce.sh" "$1" >/dev/null 2>&1 || true; }
-wait_free() {
-    local said=""
-    while held || game_running; do
-        [ -n "$said" ] || { echo "bench lock busy: $(cat "$LOCK" 2>/dev/null | tr -d '\r')"; said=1; }
-        sleep 30
-    done
-}
+source "$ROOT/PS2Recomp/tools/bench_lock.sh"
+[ -x "$ROOT/build/announce.sh" ] && export PS2X_BENCH_LOCK_ANNOUNCE="$ROOT/build/announce.sh"
 
 case "${1:-status}" in
-    wait) wait_free ;;
-    take)
-        minutes="${2:?minutes}"; purpose="${3:?purpose}"
-        wait_free
-        echo "$NAME until $(date -d "+$minutes min" +%H:%M) ($purpose)" > "$LOCK"
-        echo "took: $(cat "$LOCK")"
-        announce "took the bench lock (~$minutes min, $purpose)." ;;
-    release)
-        if grep -q "^$NAME " "$LOCK" 2>/dev/null; then : > "$LOCK"; echo "released"; announce "bench lock released, box free."; else echo "not ours: $(cat "$LOCK" 2>/dev/null)"; fi ;;
-    status) if held; then cat "$LOCK"; else echo "free"; fi ;;
-    *) echo "usage: $0 wait|take <minutes> <purpose>|release|status"; exit 1 ;;
+    wait) bench_lock_wait ;;
+    status) content=$(tr -d '\r' < "$(bench_lock_file)" 2>/dev/null); [ -n "$(echo "$content" | tr -d '[:space:]')" ] && echo "$content" || echo "free" ;;
+    *) echo "usage: $0 wait|status"; exit 1 ;;
 esac

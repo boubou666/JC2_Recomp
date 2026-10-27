@@ -40,3 +40,35 @@ Same as the other ports on the fork (TLOTR_TTA_Recomp scripts): `extract_iso.sh`
    map filter had dropped as data. The late code block starts at `0x6B2B00` (a pointer table and zero padding before
    it), not at `0x6B2C10`; every other constructor was already in the code ranges. Filter fixed; `ghidra.sh` now keeps
    the unfiltered export in `build/ghidra/functions_unfiltered.csv`.
+2. The constructors run; `SifInitRpc`, thread 2 (entry `0x150A60`, priority 4), two GS clear packets and display
+   uploads. Then the main thread spins at `0x1249B0`: `FUN_00124910` binds cdvdfsv RPC `0x8000059A`
+   (`CD_SERVER_DISKREADY`) and retries while `client->server` stays 0. Nothing serves it: the game binds it before
+   any IOP reset or module load, so it expects the boot ROM's CDVDFSV, and the analyzer did not recognise this
+   function. It is libcdvd's `sceCdDiskReady` (mode in a0, `sceSifCallRpc` at 0x11CFC8, returns the reply word), now
+   stubbed to the runtime's handler. The other cdvdfsv binders: `0x80000592` in `sceCdInit` and `0x80000597` in
+   `sceCdSearchFile` (both stubbed); `0x80000595` (0x1241A8) and `0x80000593` (0x1244C0) are only called from stubbed
+   functions.
+3. Past the disc check: `sceCdSearchFile("\CDDATA.LOC;1")` (lsn 0x100000, 0x14814 bytes) and `sceCdRead` of its 42
+   sectors to `0x97F1E0` from the loader thread (2, `0x150A60`). The main thread then waits in `WaitSema`
+   (`0x119F20`, called from `0x485BD0` on the semaphore its argument points to) for the rest of the run.
+   Inlined-stub scan (FFOP's generic recompiler bug: a stub address turned into a goto label): 0 in JC2.
+
+## Overlays (plan)
+
+- The ELF has no code for `0x940000`: no `lui 0x94`, no `jal` into it, and the data words that point there look like
+  asset data. The overlays come from `CDDATA.000` at run time and are reached through registers.
+- The fork recompiles overlays as modules (README "Overlay modules"): wrap each image into an ELF at its load
+  address, map it with Ghidra, recompile with `module_name` / `module_load` / `module_guard_size`; at run time an
+  address with no main-ELF function resolves in the module whose guard bytes match guest memory.
+- To do once boot reaches them: capture each image as the game loads it (SCTPT2 does an overlay capture too), then
+  one module per image.
+
+## For later (room findings)
+
+- Below the field rate: TMB's vblank hold (fork `346ccc9`, `EeScheduler::setVBlankHold`/`setVBlankHoldLimit`): a game
+  override turns it on when the frame's work starts after its vblank wait and off when processing ends, so a frame
+  just over 16.7 ms does not wait a whole extra field. Hook points to find in JC2 once it renders.
+- Risky HLE (FFOP): `sceVif1PkOpenDirectCode`/`CloseGifTag`/`AddGsAD` broke packets in FFOP; JC2 binds none of them.
+- Heap corruption suspect (room, FFOP): if the runtime switches EE threads where hardware never would, two threads
+  can carve the same newlib chunk (`__malloc_lock` is a no-op in many PS2 builds). JC2 has a second thread from
+  boot (entry `0x150A60`): suspect it first if JC2 shows overlapping allocations.

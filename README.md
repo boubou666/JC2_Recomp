@@ -129,7 +129,8 @@ outside the MSYS2 shell. A full runner build takes about 16 minutes on 16 thread
 ## Sharing the machine with other ports
 
 Several PS2Recomp ports are developed on the same machine. A timed game run or benchmark takes the shared bench lock
-first, so that another port's build or game does not skew it:
+(the fork's `PS2Recomp/tools/bench_lock.sh`, file `D:/ps2recomp_bench.lock`) first, so that another port's build or
+game does not skew it:
 
 ```bash
 scripts/bench_run.sh 5 "boot timing" scripts/run.sh   # waits for the lock, takes it, runs, releases it on any exit
