@@ -36,7 +36,7 @@ with their dialogue, up to free control in the Jade Throne Room. Windows comes f
 | Native GS renderer (OpenGL, no GS emulation) | ✅ |
 | Sound and music (SPU2 and IOP on the PC clock) | 🔧 |
 | New game: opening movie, first in-game scene and dialogue | ✅ |
-| 60 fps on the vblank grid (PC clock); native frame loop | 🔧 |
+| Native frame loop: no vblank pacing, 60 fps on the PC clock | ✅ |
 | VU1 microcode compiled ahead of time (`ps2_vu_aot`): no VU interpreter in play | ✅ |
 | Field exploration (free control in the Jade Throne Room after the opening) | ✅ |
 | First battle | ⏳ |

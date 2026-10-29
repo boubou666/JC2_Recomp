@@ -18,4 +18,8 @@ export PS2X_IOP_WALLCLOCK="${PS2X_IOP_WALLCLOCK:-1}"
 # The native GS renderer (GSNativeBackend, OpenGL): no GS emulation. Boot 38: intro movie, title and the 3D demo
 # draw. PS2X_GS_RENDERER=cpu for the CPU GS reference.
 export PS2X_GS_RENDERER="${PS2X_GS_RENDERER:-native}"
+# The native frame loop (runtime/jc2_overrides.cpp nativeFrameEnd): no vblank paces the game; each frame ends by
+# blocking the main thread until its deadline on the PC clock (PS2X_FRAME_CAP, 60) while the other guest threads run.
+# Boot 82: 57-60 fps through the menus, the movies and the first scene. JC2_NATIVE=0 goes back to the vblank grid.
+export JC2_NATIVE="${JC2_NATIVE:-1}"
 exec "$BIN" "$ELF" "$@"

@@ -238,3 +238,8 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   through core 0's AutoDMA sound data input) came out as white noise (boot 77: 24000 zero crossings/s, ~180
   clipped samples/s); the same build without it is clean (boot 78: ~1000 crossings/s, nothing clipped). Reverted on
   jc2/native (3465dff) and reported; sc3 is fixing it.
+- Native frame loop, working (boot 82, default since): the frame end blocks the main thread with
+  `EeScheduler::waitExternal`; a host thread sleeps until the frame deadline (FramePacer cap, 1/cap after the previous
+  deadline, or now when late) and posts a task that charges the real EE cycles, presents the frame and completes the
+  wait. JC2's lower-priority threads run while the main thread waits. 57-60 fps through the intro, menus, opening
+  movie and first scene with its dialogue; the scene-load dip is 57 fps (31 on the vblank grid).
