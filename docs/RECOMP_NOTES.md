@@ -165,3 +165,29 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   (now the default in `scripts/run.sh`): music, but ~277 AutoDMA underruns per 75 s (`iop_spu2.cpp`
   `fillInputHalf`): the IOP driver restarts core0's AutoDMA late because the IOP only advances with the EE. The
   fix is the IOP on the PC clock (native layer 2, not written yet).
+
+## Native path, boots 30-51 (2026-10-29 night)
+
+- Native IOP: all 13 IRX recompiled (`scripts/iop_recomp.sh`, fork `tools/iop_recomp.py` from
+  `jc2/iop-recomp-scan`: pointer-reached functions, prologues after a function end), `PS2X_IOP_NATIVE=1` by
+  default; boot 33 checked them against the interpreter (`PS2X_IOP_NATIVE_CHECK=1`, identical SPU2 counters and
+  sound). Export the variables: a bare `VAR=1 cmd` inside another `bash -c` did not reach the runner (boot 31).
+- Sound: `PS2X_SPU2_WALLCLOCK=1` + `PS2X_IOP_WALLCLOCK=1` by default; the 230 "AutoDMA underruns" per 75 s leave
+  no silent gap in the output (boots 33, 37).
+- Native GS: `PS2X_GS_RENDERER=native` by default. Fork fix 732b622: the backend wrote depth through
+  `gl_Position.z = z*2-1`, which collapses small Z; JC2's movie sprite (Z 1 over a Z 0 clear, ZTST GREATER) was
+  dropped. Captures from the native backend are 1280 wide with a white right half (capture buffer, not the screen).
+- Movies: libmpeg's `sceMpegIsEnd` (0x118108) was missed by the analyzer; left native it read libmpeg state the HLE
+  never sets, so the opening movie never ended (manual stub in the TOML).
+- Code overlays: 1383 CodeWarrior `MWo3` modules in CDDATA.000 (`tools/find_overlays.py`; slots 0x940000 (559),
+  0x963000 (347), 0x967000, 0x96A800, 0x96B000, 0x972000, 0x976800). `scripts/overlays.sh`: VP2S_Recomp's
+  `wrap_elf.py`, `tools/overlay_functions.py` (function map without Ghidra), ps2_recomp module mode (guard: the 64-byte
+  header with the module's name) into `generated/overlays/`; one 23-minute build. 1368 build; 15 `SC_*` modules
+  (non-empty constructor table) still fail in wrap_elf/ps2_recomp.
+- Main ELF: 99 functions reached only through pointers or from overlays added to `entry_points`
+  (`tools/overlay_main_targets.py`; boot 46 stopped at 0x194FB0, a leaf after `jr ra; addiu sp` + padding).
+- `scripts/recomp.sh` keeps `generated/iop` and `generated/overlays` (`tools/sync_tree.py --keep`).
+- Now (boot 48-51): New game -> opening movie -> first in-game 3D scene (the hero with his portrait, no text box),
+  which never moves on: no button changes it (boot 50), the main thread runs its scene loop, the loader idles, the
+  sound driver (IOP RPC 0x10000, fno 0x102, server 0xAE3E0 in M2SOUND) is polled every frame and the EE keeps
+  sending audio data over SIF DMA. Hypothesis: the scene waits for a voice stream to end. Not confirmed.
