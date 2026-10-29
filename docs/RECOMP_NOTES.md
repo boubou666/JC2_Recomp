@@ -243,3 +243,6 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   deadline, or now when late) and posts a task that charges the real EE cycles, presents the frame and completes the
   wait. JC2's lower-priority threads run while the main thread waits. 57-60 fps through the intro, menus, opening
   movie and first scene with its dialogue; the scene-load dip is 57 fps (31 on the vblank grid).
+- Open (intermittent): boot 84 (native loop, CROSS every 1 s from 200 s) stayed black from the end of the opening
+  movie (~220 s) to the end of the run, the game running at 60 fps; boot 85, the same input, played the scene.
+  A race; candidate: the IOP's instant CD completions (TTA's tlotr/iop-cd-timing, PS2X_IOP_CD_SECTORS_PER_SECOND).
