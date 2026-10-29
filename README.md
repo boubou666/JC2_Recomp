@@ -45,7 +45,13 @@ what remains open.
 
 ## Screenshots
 
-None yet: they will be added here as the port reaches each screen.
+The first in-game scene on the full native path (native GS renderer, native IOP modules, recompiled overlays):
+
+| | |
+|---|---|
+| ![The hero in the first room](docs/screenshots/first-scene-room.png) | ![First dialogue line](docs/screenshots/first-scene-dialogue.png) |
+| ![Dialogue with Levant](docs/screenshots/first-scene-levant.png) | |
+
 
 ## Goal
 

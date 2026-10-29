@@ -3,7 +3,7 @@
 # 0x940000, 0x963000, ...) as PS2Recomp overlay modules, into generated/overlays/<module>/. At run time the module
 # whose first 64 bytes (its header, with its file name) match guest memory at its load address is the one called.
 #   scripts/overlays.sh [MODULE...]     default: every module on the disc (1383; ~6.5M instructions)
-# Stages per module: tools/find_overlays.py (once) -> VP2S_Recomp's tools/wrap_elf.py (ELF at the load address)
+# Stages per module: tools/find_overlays.py (once) -> tools/wrap_overlay.py (VP2S_Recomp wrap_elf.py: ELF at the load address)
 # -> tools/overlay_functions.py (function map, no Ghidra) -> ps2_recomp in module mode.
 source "$(dirname "$0")/common.sh"
 export PATH="/c/msys64/ucrt64/bin:$PATH"
@@ -11,7 +11,7 @@ native() { command -v cygpath > /dev/null && cygpath -m "$1" || echo "$1"; }
 DISC="$ROOT/build/overlays_disc"
 WORK="$ROOT/build/overlay_work"
 OUT="$GENERATED/overlays"
-WRAP="${JC2_WRAP_ELF:-D:/VP2S_Recomp/tools/wrap_elf.py}"
+WRAP="$ROOT/tools/wrap_overlay.py"  # VP2S_Recomp's tools/wrap_elf.py (JC2_WRAP_ELF) with JC2's text end
 mkdir -p "$WORK" "$OUT"
 [ -n "$(ls "$DISC"/*.bin 2>/dev/null | head -1)" ] ||
     python -I "$(native "$ROOT/tools/find_overlays.py")" "$(native "$GAME_DIR/CDDATA.000")" "$(native "$DISC")" | tail -1
@@ -31,7 +31,7 @@ for stem in "${modules[@]}"; do
     name="ovl_$(echo "$stem" | sed 's/_[0-9a-f]\{6\}$//; s/[^A-Za-z0-9_]/_/g')"
     load="0x${stem##*_}"
     # A module that cannot be wrapped or mapped is reported and skipped; the others go on.
-    python -I "$WRAP" "$(native "$bin")" "$(native "$WORK/$name.elf")" --flags-from "$(native "$ELF")"         > "$WORK/$name.log" 2>&1 || { echo "wrap failed for $name (see $WORK/$name.log)"; continue; }
+    python -I "$(native "$WRAP")" "$(native "$bin")" "$(native "$WORK/$name.elf")" --flags-from "$(native "$ELF")"         > "$WORK/$name.log" 2>&1 || { echo "wrap failed for $name (see $WORK/$name.log)"; continue; }
     python -I "$(native "$ROOT/tools/overlay_functions.py")" "$(native "$bin")" "$(native "$WORK/$name.csv")"         >> "$WORK/$name.log" 2>&1 || { echo "function map failed for $name (see $WORK/$name.log)"; continue; }
     cat > "$WORK/$name.toml" <<TOML
 [general]

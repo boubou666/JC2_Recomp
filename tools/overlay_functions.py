@@ -58,13 +58,24 @@ def main():
         if not in_text(addr) and in_text(w) and prologue(w):
             starts.add(w)
 
+    # Static initializers: CodeWarrior keeps them at the end of the data, just before the constructor table (header
+    # +0x18..+0x1C), which tools/wrap_elf.py makes an executable .init section. SC_A005's at 0x964080 runs when the
+    # first in-game scene loads.
+    ctors, ctors_end = struct.unpack_from('<2I', image, 0x18)
+    init = sorted({word(a) for a in range(ctors, ctors_end, 4) if ctors < ctors_end
+                   and word(a) is not None and end <= word(a) < ctors})
+
     ordered = sorted(starts)
     with open(sys.argv[2], 'w', newline='\n') as out:
         out.write('Name,Start,End,Size\n')
         for i, s in enumerate(ordered):
             e = ordered[i + 1] if i + 1 < len(ordered) else end
             out.write('FUN_%08x,0x%08X,0x%08X,%d\n' % (s, s, e, e - s))
-    print('%s: .text %#x-%#x, %d functions' % (sys.argv[1], start, end, len(ordered)))
+        for i, s in enumerate(init):
+            e = init[i + 1] if i + 1 < len(init) else ctors
+            out.write('FUN_%08x,0x%08X,0x%08X,%d\n' % (s, s, e, e - s))
+    print('%s: .text %#x-%#x, %d functions, %d static initializers' % (sys.argv[1], start, end, len(ordered),
+                                                                       len(init)))
 
 
 main()

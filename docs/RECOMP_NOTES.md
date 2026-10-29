@@ -209,3 +209,12 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   while the EE EABI passes them in t0-t2, so the server's queue was 0. Fixed on jc2/native c3ae3e1. Boot 62: the
   scene goes on (the hero walks the room with a "!" bubble, the next shots and portraits follow).
   JC2_WATCH=<addr>,<bytes> logs a whole range when any word of it changes (needs JC2_TRACE_SCENE=1).
+- Dialogue text box (boots 62-66): the scene ran, but the text box was never drawn (GS record: no draw at all, on the
+  native and the CPU GS alike). One `[guest-branch:missing-target]` gave it away: 0x10DC04 (the static constructor
+  walk run when an overlay loads) called 0x964080, SC_A005's static initializer. CodeWarrior keeps the initializers
+  at the end of the data, just before the constructor table (header +0x18..+0x1C), and the table follows text + data
+  on the disc. `tools/find_overlays.py` cut each module at text + data, so the table was lost and
+  `tools/overlay_functions.py` never listed the initializers: 174 modules (SC_* scenes, BTLEF_* battle effects).
+  Now the extract keeps the table, the function map lists the initializers, and `tools/wrap_overlay.py` runs VP2S's
+  `wrap_elf.py` with JC2's text end (text size + 0x40) so its .init/.ctors sections do not overlap .text. Boot 66:
+  the dialogue box and its text show, and the conversation moves on (Levant appears).
