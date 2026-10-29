@@ -8,8 +8,8 @@ source "$(dirname "$0")/common.sh"
 BIN="$GAME_BUILD/PS2Recomp/ps2xRuntime/ps2EntryRunner$EXE"
 [ -x "$BIN" ] || { echo "missing $BIN, run scripts/build_runtime.sh first"; exit 1; }
 export PS2X_SPU2_WALLCLOCK="${PS2X_SPU2_WALLCLOCK:-1}"
-# The IOP modules recompiled by scripts/iop_recomp.sh (generated/iop) run native, the others interpreted. Boot 33:
-# no difference under PS2X_IOP_NATIVE_CHECK=1, same SPU2 counters and sound as interpreted. =0 to compare.
+# The IOP modules recompiled by scripts/iop_recomp.sh (generated/iop) run native. Boot 33: same SPU2 counters and
+# sound as interpreted (PS2X_IOP_NATIVE_CHECK only checks TMB code, so it proves nothing here). =0 to compare.
 export PS2X_IOP_NATIVE="${PS2X_IOP_NATIVE:-1}"
 # The IOP's time follows the PC clock, not the EE cycles the game ran (native layer 2, TMB's run_native.sh). JC2's
 # "AutoDMA underruns" (iop_spu2) stay at 230 per 75 s with or without it and leave no silent gap in the output

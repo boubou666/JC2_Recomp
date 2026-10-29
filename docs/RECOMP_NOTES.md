@@ -170,8 +170,9 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
 
 - Native IOP: all 13 IRX recompiled (`scripts/iop_recomp.sh`, fork `tools/iop_recomp.py` from
   `jc2/iop-recomp-scan`: pointer-reached functions, prologues after a function end), `PS2X_IOP_NATIVE=1` by
-  default; boot 33 checked them against the interpreter (`PS2X_IOP_NATIVE_CHECK=1`, identical SPU2 counters and
-  sound). Export the variables: a bare `VAR=1 cmd` inside another `bash -c` did not reach the runner (boot 31).
+  default; boot 33 compared them with the interpreter by behaviour: identical SPU2 counters (key-ons, AutoDMA
+  bytes, underruns, peak) and identical sound loudness. `PS2X_IOP_NATIVE_CHECK=1` reported nothing, but it only
+  checks TMB's voice search (VP2S, 2026-10-29), so it says nothing for JC2's modules. Export the variables: a bare `VAR=1 cmd` inside another `bash -c` did not reach the runner (boot 31).
 - Sound: `PS2X_SPU2_WALLCLOCK=1` + `PS2X_IOP_WALLCLOCK=1` by default; the 230 "AutoDMA underruns" per 75 s leave
   no silent gap in the output (boots 33, 37).
 - Native GS: `PS2X_GS_RENDERER=native` by default. Fork fix 732b622: the backend wrote depth through
@@ -191,3 +192,11 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   which never moves on: no button changes it (boot 50), the main thread runs its scene loop, the loader idles, the
   sound driver (IOP RPC 0x10000, fno 0x102, server 0xAE3E0 in M2SOUND) is polled every frame and the EE keeps
   sending audio data over SIF DMA. Hypothesis: the scene waits for a voice stream to end. Not confirmed.
+- First in-game scene (boots 52-56): overlay m2esA001's script (0x940710, run every frame) is a list of command
+  calls (0x1EB5D0 for most, interpreter with a jump table at 0x6944A0; also 0x1F4B20, 0x1F3390), each returning
+  non-zero while running (the script then yields). It stops at command 0xCB (handler 0x1F0DC4): done when the global
+  0x879FAC == 2 (a three-way cursor kept by 0x48BD20, Left/Right; that routine never runs in this scene) or when
+  0x477C50(0) returns 0 (0x41DA80: status of one of four slots in a table at 0x8B9860, probably memory-card
+  ports/slots). Meanwhile the game finds no save (`GetDir '/BASLUS-20309MAYU2'` -> 0 entries) and polls the card
+  (GetInfo + Sync, ~216 times). Hypothesis: a memory-card prompt after "no save found" that is neither drawn nor
+  driven. JC2_TRACE_SCRIPT=1 logs the script's commands, JC2_WATCH=879fac the cursor.

@@ -13,6 +13,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <tuple>
 #include <string>
 #include <thread>
 #include <vector>
@@ -203,6 +204,29 @@ namespace
     constexpr uint32_t kGsResetGraph = 0x0010F7F8u;
     PS2Runtime::RecompiledFunction g_gsResetGraph = nullptr;
 
+    // JC2_TRACE_SCRIPT=1 (bring-up aid): the event scripts (code overlays such as m2esA001's 0x940710, run every frame)
+    // are sequences of calls to 0x1F3390(ctx, opcode, args...), each returning 0 while its command is not done (the
+    // script then stops and runs again next frame). Logs each distinct (opcode, a2, a3, result) once, with the
+    // caller: the command a stuck scene waits on keeps returning 0.
+    // The script calls three command functions: 0x1EB5D0 (most commands), 0x1F4B20 and 0x1F3390.
+    constexpr uint32_t kScriptCommands[] = {0x001EB5D0u, 0x001F4B20u, 0x001F3390u};
+    std::map<uint32_t, PS2Runtime::RecompiledFunction> g_scriptCommands;
+
+    void scriptCommandTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t function = ctx->pc, ra = getRegU32(ctx, 31), opcode = getRegU32(ctx, 5),
+                       a2 = getRegU32(ctx, 6), a3 = getRegU32(ctx, 7);
+        const auto it = g_scriptCommands.find(function);
+        if (it == g_scriptCommands.end())
+            return;
+        it->second(rdram, ctx, runtime);
+        const uint32_t result = getRegU32(ctx, 2);
+        static std::set<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>> s_seen;
+        if (s_seen.size() < 8192u && s_seen.insert({function, ra, opcode, a2, a3, result}).second)
+            std::fprintf(stderr, "[jc2:script] 0x%x ra=0x%x a1=0x%x a2=0x%x a3=0x%x -> %u (EE cycle %llu)\n", function,
+                         ra, opcode, a2, a3, result, static_cast<unsigned long long>(runtime->eeScheduler().currentCycle()));
+    }
+
     constexpr uint32_t kGsSetDefDispEnv = 0x0010FA00u;
     PS2Runtime::RecompiledFunction g_gsSetDefDispEnv = nullptr;
 
@@ -290,6 +314,17 @@ namespace
         if (const char *guard = std::getenv("JC2_GUARD"); guard && *guard)
             installGuard(runtime, static_cast<uint32_t>(std::strtoul(guard, nullptr, 16)));
 #endif
+        if (const char *trace = std::getenv("JC2_TRACE_SCRIPT"); trace && *trace == '1')
+        {
+            for (const uint32_t address : kScriptCommands)
+            {
+                if (PS2Runtime::RecompiledFunction original = runtime.lookupFunction(address))
+                {
+                    g_scriptCommands[address] = original;
+                    runtime.registerFunction(address, &scriptCommandTrace);
+                }
+            }
+        }
         if (const char *trace = std::getenv("JC2_TRACE_GS"); trace && *trace == '1')
         {
             if (PS2Runtime::RecompiledFunction original = runtime.lookupFunction(kGsResetGraph))
