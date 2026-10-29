@@ -259,80 +259,21 @@ namespace
                          ra, opcode, a2, a3, result, static_cast<unsigned long long>(runtime->eeScheduler().currentCycle()));
     }
 
-    // Native frame loop (JC2_NATIVE=1, the default in scripts/run.sh): no vblank paces the game. JC2's flip (0x15A150) counts its frames (0x6D6190)
-    // and waits in 0x15B400(target, &late) until the vblank handler's counter (0x6D61AC) reaches the frame count; a late
-    // frame sets the counter back to target - 1 and counts itself (0x6D61B0). It returns the CSR FIELD bit, which picks
-    // the half-line offset of the next field. The game steps one fixed frame per call.
-    // Here the wait blocks the main thread until the frame's deadline on the PC clock (the FramePacer cap, 60 by
-    // default; 0 = no hold): while it waits, JC2's lower-priority threads run (loads, movie decoding, the work the next
-    // frame draws from). Holding the frame with FramePacer::frameEnd() instead slept the EE executor itself, starved
-    // those threads, and every frame came out black (boots 67-76); blocked this way, boot 82 runs the menus, the
-    // movies and the first scene at 57-60 fps. At the deadline EE time is charged with the real
-    // time the frame took (timers and the IOP's loads run on it), the frame is shown, and the wait returns on time.
+    // Native frame loop (JC2_NATIVE=1, the default in scripts/run.sh): no vblank paces the game. JC2's flip
+    // (0x15A150) counts its frames (0x6D6190) and waits in 0x15B400(target, &late) until the vblank handler's counter
+    // (0x6D61AC) reaches the frame count; a late frame sets the counter back to target - 1 and counts itself
+    // (0x6D61B0). It returns the CSR FIELD bit, which picks the half-line offset of the next field. The game steps
+    // one fixed frame per call.
+    // Here the wait blocks the main thread until the frame's deadline on the PC clock (EeScheduler::waitHostDeadline;
+    // the FramePacer cap, 60 by default, 0 = no hold): while it waits, JC2's lower-priority threads run (loads, movie
+    // decoding, the work the next frame draws from). Holding the frame with FramePacer::frameEnd() instead slept the
+    // EE executor itself, starved those threads, and every frame came out black (boots 67-76); blocked this way,
+    // boot 82 runs the menus, the movies and the first scene at 57-60 fps. At the deadline EE time is charged with
+    // the real time the frame took (timers and the IOP's loads run on it), the frame is shown, and the wait returns
+    // on time.
     constexpr uint32_t kFrameWait = 0x0015B400u;
     constexpr uint32_t kVBlankCounter = 0x006D61ACu;
     constexpr double kEeClockHz = 294912000.0;
-    constexpr uint32_t kFrameEndWaitType = 0x4A433246u; // 'JC2F': an external wait on the EE scheduler
-
-    // The host side of the frame end: wakes the waiting main thread at its deadline, through the EE executor.
-    class FrameDeadlines
-    {
-    public:
-        explicit FrameDeadlines(PS2Runtime *runtime) : m_runtime(runtime), m_thread([this] { loop(); }) { m_thread.detach(); }
-
-        void wakeAt(std::chrono::steady_clock::time_point deadline, uint64_t token)
-        {
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                m_deadline = deadline;
-                m_token = token;
-            }
-            m_cv.notify_one();
-        }
-
-    private:
-        void loop()
-        {
-            uint64_t done = 0;
-            std::unique_lock<std::mutex> lock(m_mutex);
-            while (!m_runtime->isStopRequested())
-            {
-                m_cv.wait_for(lock, std::chrono::milliseconds(100), [&] { return m_token != done; });
-                if (m_token == done)
-                    continue;
-                const uint64_t token = m_token;
-                const auto deadline = m_deadline;
-                lock.unlock();
-                std::this_thread::sleep_until(deadline);
-                PS2Runtime *runtime = m_runtime;
-                runtime->eeScheduler().postTask([runtime, token]
-                {
-                    EeScheduler &scheduler = runtime->eeScheduler();
-                    static uint64_t s_lastFrameCycle = scheduler.currentCycle();
-                    static auto s_lastFrame = std::chrono::steady_clock::now();
-                    const auto now = std::chrono::steady_clock::now();
-                    const double seconds = std::min(0.1, std::chrono::duration<double>(now - s_lastFrame).count());
-                    s_lastFrame = now;
-                    const uint64_t accounted = scheduler.currentCycle() - s_lastFrameCycle;
-                    const uint64_t realCycles = static_cast<uint64_t>(seconds * kEeClockHz);
-                    if (realCycles > accounted)
-                        scheduler.accountCycles(static_cast<uint32_t>(std::min<uint64_t>(realCycles - accounted, 0xFFFFFFFFu)));
-                    s_lastFrameCycle = scheduler.currentCycle();
-                    scheduler.presentGuestFrame();
-                    scheduler.completeExternalWait(kFrameEndWaitType, token, 0);
-                });
-                done = token;
-                lock.lock();
-            }
-        }
-
-        PS2Runtime *m_runtime;
-        std::mutex m_mutex;
-        std::condition_variable m_cv;
-        std::chrono::steady_clock::time_point m_deadline{};
-        uint64_t m_token = 0;
-        std::thread m_thread;
-    };
 
     void nativeFrameEnd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
@@ -346,20 +287,33 @@ namespace
         const uint32_t field = (target & 1u) ^ s_fieldPhase;
 
         // The deadline: one frame of the cap after the previous one, or now if the frame ran late.
-        static FrameDeadlines s_deadlines(runtime);
-        static uint64_t s_token = 0;
         static auto s_next = std::chrono::steady_clock::now();
         const uint32_t cap = runtime->framePacer().cap();
         const auto now = std::chrono::steady_clock::now();
         s_next = cap == 0u ? now : std::max(now, s_next + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                                std::chrono::duration<double>(1.0 / cap)));
-        s_deadlines.wakeAt(s_next, ++s_token);
-        runtime->eeScheduler().waitExternal(EeWaitReason::External, kFrameEndWaitType, s_token,
-                                            [field, ra](R5900Context &resume)
-                                            {
-                                                setReturnU32(&resume, field);
-                                                resume.pc = ra;
-                                            });
+        runtime->eeScheduler().waitHostDeadline(
+            s_next,
+            [runtime]
+            {
+                EeScheduler &scheduler = runtime->eeScheduler();
+                static uint64_t s_lastFrameCycle = scheduler.currentCycle();
+                static auto s_lastFrame = std::chrono::steady_clock::now();
+                const auto woke = std::chrono::steady_clock::now();
+                const double seconds = std::min(0.1, std::chrono::duration<double>(woke - s_lastFrame).count());
+                s_lastFrame = woke;
+                const uint64_t accounted = scheduler.currentCycle() - s_lastFrameCycle;
+                const uint64_t realCycles = static_cast<uint64_t>(seconds * kEeClockHz);
+                if (realCycles > accounted)
+                    scheduler.accountCycles(static_cast<uint32_t>(std::min<uint64_t>(realCycles - accounted, 0xFFFFFFFFu)));
+                s_lastFrameCycle = scheduler.currentCycle();
+                scheduler.presentGuestFrame();
+            },
+            [field, ra](R5900Context &resume)
+            {
+                setReturnU32(&resume, field);
+                resume.pc = ra;
+            });
     }
 
     // JC2_FPS=1 (and the native loop): the game's frames per second, read from a host thread every 5 s: the flip's
