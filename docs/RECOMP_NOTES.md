@@ -260,3 +260,10 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
 - Sound: sc3's 1895289 (SPU2 within 512 samples of the IOP clock) does not cure JC2's movie noise (boot 93: intro
   movie 24000 zero crossings/s, ~190 clipped/s; state dump late=2250 gap=2213 drop=256); jc2/native stays on the
   path without 4fc53883.
+- Movie sound on the native loop, fixed (boots 95-100): the movie soundtracks came out as white noise (24000 zero
+  crossings/s) with the native frame loop, also without sc3's 4fc53883, clean on the vblank grid. Deterministic, and
+  byte-swapping the output brought it back near music (3685 crossings/s): the soundtrack with its bytes in the wrong
+  order. Cause: the native frame end returned the frame count's parity as the field, where the original wait returns
+  the CSR FIELD bit read at its vblank; JC2's movie audio path depends on that bit. Returning CSR FIELD at the
+  wake-up (the vblanks still run on EE time): clean, 870-1230 crossings/s, nothing clipped (boot 100).
+  `JC2_NATIVE_FIELD=parity` and `JC2_NATIVE_COUNTER=1` keep the old behaviours for A/B.

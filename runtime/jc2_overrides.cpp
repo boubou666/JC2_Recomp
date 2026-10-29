@@ -278,13 +278,20 @@ namespace
     void nativeFrameEnd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t target = getRegU32(ctx, 4), late = getRegU32(ctx, 5), ra = getRegU32(ctx, 31);
-        // As an on-time frame: the counter at the target, not late, and the field following the frame count (with
-        // the parity the GS had at the first frame, so each buffer keeps its half-line offset).
-        std::memcpy(rdram + kVBlankCounter, &target, sizeof(target));
+        // As an on-time frame: not late. The vblank counter is left to the vblank handler,
+        // which still counts on EE time; JC2_NATIVE_COUNTER=1 sets it to the target as before (bring-up A/B: movie
+        // sound turned to white noise with the native loop, boots 95-98).
+        static const bool s_setCounter = [] { const char *v = std::getenv("JC2_NATIVE_COUNTER"); return v && v[0] == '1'; }();
+        if (s_setCounter)
+            std::memcpy(rdram + kVBlankCounter, &target, sizeof(target));
         const uint32_t onTime = 0u;
         std::memcpy(rdram + (late & 0x1FFFFFCu), &onTime, sizeof(onTime));
+        // The return value is the CSR FIELD bit at the wake-up, as the original reads it (the vblanks still run on EE
+        // time). JC2_NATIVE_FIELD=parity returns the frame count's parity instead (the first version; with it the movie
+        // soundtracks came out byte-swapped, as white noise, boots 95-99).
+        static const bool s_parityField = [] { const char *v = std::getenv("JC2_NATIVE_FIELD"); return v && std::strcmp(v, "parity") == 0; }();
         static const uint32_t s_fieldPhase = static_cast<uint32_t>((runtime->memory().gs().csr.load() >> 13) & 1u) ^ (target & 1u);
-        const uint32_t field = (target & 1u) ^ s_fieldPhase;
+        const uint32_t parityField = (target & 1u) ^ s_fieldPhase;
 
         // The deadline: one frame of the cap after the previous one, or now if the frame ran late.
         static auto s_next = std::chrono::steady_clock::now();
@@ -327,8 +334,10 @@ namespace
                 s_lastFrameCycle = scheduler.currentCycle();
                 scheduler.presentGuestFrame();
             },
-            [field, ra](R5900Context &resume)
+            [runtime, parityField, ra](R5900Context &resume)
             {
+                const uint32_t field = s_parityField ? parityField
+                                                     : static_cast<uint32_t>((runtime->memory().gs().csr.load() >> 13) & 1u);
                 setReturnU32(&resume, field);
                 resume.pc = ra;
             });
