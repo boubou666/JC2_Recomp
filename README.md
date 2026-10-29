@@ -23,8 +23,8 @@ Not an emulator: the game's own MIPS R5900 code, rebuilt as a native program on 
 ## Status
 
 **Bring-up, not playable yet.** On the full native path (no paraLLEl-GS, no IOP interpreter) the game boots through
-the intro movies, the title screen and the main menu, and New game plays the opening movie and the first in-game scene
-with its dialogue. Windows comes first, then Linux.
+the intro movies, the title screen and the main menu, and New game plays the opening movie and the first in-game scenes
+with their dialogue, up to free control in the Jade Throne Room. Windows comes first, then Linux.
 
 | Milestone | |
 |---|:---:|
@@ -38,7 +38,8 @@ with its dialogue. Windows comes first, then Linux.
 | New game: opening movie, first in-game scene and dialogue | ✅ |
 | 60 fps on the vblank grid (PC clock); native frame loop | 🔧 |
 | VU1 microcode compiled ahead of time (`ps2_vu_aot`): no VU interpreter in play | ✅ |
-| Field exploration, first battle | ⏳ |
+| Field exploration (free control in the Jade Throne Room after the opening) | ✅ |
+| First battle | ⏳ |
 | Memory card saves | ⏳ |
 | Linux build | ⏳ |
 | Widescreen, higher internal resolution | ⏳ |
@@ -50,11 +51,12 @@ what remains open.
 
 ## Screenshots
 
-The first in-game scene on the full native path (native GS renderer, native IOP modules, recompiled overlays):
+The first in-game scenes on the full native path (native GS renderer, native IOP modules, recompiled overlays), up to free control in the Jade Throne Room:
 
 | | | |
 |---|---|---|
 | ![The hero in the first room](docs/screenshots/first-scene-room.png) | ![First dialogue line](docs/screenshots/first-scene-dialogue.png) | ![Dialogue with Levant](docs/screenshots/first-scene-levant.png) |
+| ![Free control in the Jade Throne Room](docs/screenshots/jade-throne-room.png) | | |
 
 
 ## Goal
