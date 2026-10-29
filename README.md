@@ -22,21 +22,26 @@ Not an emulator: the game's own MIPS R5900 code, rebuilt as a native program on 
 
 ## Status
 
-**Bring-up, not playable yet.** The stripped executable is mapped and recompiles with no errors; the first boot runs
-the game's startup code up to its C++ static constructors. Windows comes first, then Linux.
+**Bring-up, not playable yet.** On the full native path (no paraLLEl-GS, no IOP interpreter) the game boots through
+the intro movies, the title screen and the main menu, and New game plays the opening movie and the first in-game scene
+with its dialogue. Windows comes first, then Linux.
 
 | Milestone | |
 |---|:---:|
 | Map the stripped main ELF (Ghidra function map, data spans filtered out, SDK functions from the fork's signature database) | ✅ |
 | Recompile it and link the generated code with the PS2Recomp runtime (Windows) | ✅ |
-| Boot: EE kernel, the game's own IOP modules, CD reads from the disc files | 🔧 |
-| Code overlays loaded at `0x940000` at run time | ⏳ |
-| Movies, title screen, menus | ⏳ |
-| First battle | ⏳ |
-| Sound and music | ⏳ |
-| Memory card | ⏳ |
+| Boot: EE kernel, CD reads from the disc files, the game's 13 IOP modules recompiled to native code | ✅ |
+| Code overlays: the 1368 CodeWarrior modules loaded at run time recompiled, static initializers included | ✅ |
+| Movies, title screen, main menu | ✅ |
+| Native GS renderer (OpenGL, no GS emulation) | ✅ |
+| Sound and music (SPU2 and IOP on the PC clock) | 🔧 |
+| New game: opening movie, first in-game scene and dialogue | ✅ |
+| Frame loop on the PC clock (60 fps) | 🔧 |
+| VU1 microcode without the VU interpreter | ⏳ |
+| Field exploration, first battle | ⏳ |
+| Memory card saves | ⏳ |
 | Linux build | ⏳ |
-| Full speed, widescreen, higher resolution | ⏳ |
+| Widescreen, higher internal resolution | ⏳ |
 
 ✅ works · 🔧 in progress · ⏳ not reached yet
 
@@ -47,10 +52,9 @@ what remains open.
 
 The first in-game scene on the full native path (native GS renderer, native IOP modules, recompiled overlays):
 
-| | |
-|---|---|
-| ![The hero in the first room](docs/screenshots/first-scene-room.png) | ![First dialogue line](docs/screenshots/first-scene-dialogue.png) |
-| ![Dialogue with Levant](docs/screenshots/first-scene-levant.png) | |
+| | | |
+|---|---|---|
+| ![The hero in the first room](docs/screenshots/first-scene-room.png) | ![First dialogue line](docs/screenshots/first-scene-dialogue.png) | ![Dialogue with Levant](docs/screenshots/first-scene-levant.png) |
 
 
 ## Goal
@@ -65,11 +69,13 @@ disc files (game/) ──► Ghidra (headless, EE extension) + ExportPS2Function
                    ──► recomp/ghidra/jc2_functions.csv ──► ps2_analyzer (SCE SDK signatures) ──► recomp/jc2_slus20309.toml
                                            │
                      ps2_recomp ──► C++ (one file per function, generated/) · ps2_vu_aot ──► VU1 microcode (generated/vu1/)
+   CDDATA.000 overlays ──► tools/find_overlays.py ──► ps2_recomp in module mode ──► generated/overlays/ (1368 modules)
+   the game's IRX (dumped by a first run) ──► the fork's tools/iop_recomp.py ──► generated/iop/ (13 modules)
                                            │
                  CMakeLists.txt ──► PS2Recomp runtime + generated code + runtime/jc2_overrides.cpp
                                            │
-   PS2Recomp runtime: EE kernel HLE · DMAC · GIF/GS · VIF/VU0/VU1 · IPU ─┼─► ps2EntryRunner
-   PS2Recomp IOP:     R3000A interpreter running the game's own IRX · SPU2 · SIO2
+   PS2Recomp runtime: EE kernel HLE · DMAC · GIF · native GS renderer (OpenGL) · VIF/VU0/VU1 · IPU ─┼─► ps2EntryRunner
+   PS2Recomp IOP:     the game's own IRX as native code · SPU2 and IOP on the PC clock · SIO2
 ```
 
 - The retail executable is stripped, and its code and data share a single segment. Ghidra with the Emotion Engine
@@ -103,7 +109,10 @@ scripts/extract_iso.sh "/path/to/Jade Cocoon 2 (USA).iso"   # disc files -> game
 scripts/build_tools.sh                                       # ps2_recomp, ps2_analyzer, ps2_vu_aot -> build/tools
 GHIDRA_INSTALL_DIR=/path/to/ghidra scripts/ghidra.sh         # only to regenerate recomp/ghidra/jc2_functions.csv
 scripts/recomp.sh                                            # ELF + recomp/jc2_slus20309.toml -> generated/
+scripts/overlays.sh                                          # code overlays in CDDATA.000 -> generated/overlays/
 scripts/build_runtime.sh                                     # runtime + generated code -> build/game
+PS2X_IOP_NATIVE=0 PS2X_IOP_DUMP_MODULES=build/iop_modules scripts/run.sh   # once: saves the game's IOP modules
+scripts/iop_recomp.sh && scripts/build_runtime.sh            # IOP modules -> generated/iop/, rebuild
 scripts/run.sh                                               # ps2EntryRunner game/SLUS_203.09
 ```
 
