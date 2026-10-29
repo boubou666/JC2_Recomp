@@ -218,3 +218,17 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   Now the extract keeps the table, the function map lists the initializers, and `tools/wrap_overlay.py` runs VP2S's
   `wrap_elf.py` with JC2's text end (text size + 0x40) so its .init/.ctors sections do not overlap .text. Boot 66:
   the dialogue box and its text show, and the conversation moves on (Levant appears).
+
+## Frame rate and the native frame loop (boots 67-76, 2026-10-29)
+
+- On the vblank grid (the default) JC2 holds 60 fps: `JC2_FPS=1` samples the flip's frame count (0x6D6190) and its
+  late frames (0x6D61B0) every 5 s; boot 75: 59.8-60.0 through the intro, menus and the first scene, one dip to 31-49
+  during a scene load (143 late frames).
+- The frame wait is 0x15B400(target, &late): the vblank handler 0x15B360 counts vblanks (0x6D61AC) and wakes the main
+  thread (0x6D61A4 set before it sleeps); a late frame sets the counter back and counts itself; the wait returns the
+  CSR FIELD bit (half-line offset of the next field). All flips go through 0x15A150 (called from 0x15BC80).
+- `JC2_NATIVE=1` replaces the wait with a FramePacer frame end (as VP2S/TMB): a steady 59.6 fps, the game goes on,
+  but every frame is black, with the native or CPU GS, presented at the frame end, after the flip, newest buffer or
+  on the vblanks (`JC2_NATIVE_FRAMES=0`, boot 76). Cause: the main thread never sleeps, so the lower-priority threads
+  that run while it waits for the vblank starve. A JC2 native loop has to let them run (a real sleep to the next host
+  frame) before it can replace the grid. Wrapping the flip 0x15A150 broke the game (boot 74): it sleeps inside.

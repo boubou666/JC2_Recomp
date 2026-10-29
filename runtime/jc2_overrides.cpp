@@ -257,6 +257,69 @@ namespace
                          ra, opcode, a2, a3, result, static_cast<unsigned long long>(runtime->eeScheduler().currentCycle()));
     }
 
+    // Native frame loop (JC2_NATIVE=1, experimental, off: boots 67-76 drew only black frames). The original wait
+    // sleeps the main thread until the vblank, and JC2's lower-priority threads (loads, movie decoding, the work the
+    // frame draws from) run in that time; this frame end never yields, so they starve. JC2 holds 60 fps on the vblank
+    // grid anyway (boot 75), so it stays there for now.
+    // As VP2S's nativeFrameEnd (layer 1 of docs/native.md): JC2's flip (0x15A150)
+    // counts its frames (0x6D6190) and waits in 0x15B400(target, &late) until the vblank handler's counter
+    // (0x6D61AC) reaches the frame count, sleeping between vblanks; a late frame sets the counter back to target - 1
+    // and counts itself (0x6D61B0). It returns the CSR FIELD bit, which picks the half-line offset of the next
+    // field. The game steps one fixed frame per vblank, so the frame end is held by the runtime's FramePacer (at its
+    // cap, 60 by default), EE time is charged with the real time the frame took (the vblank handler, timers and the
+    // IOP's loads still run on it), and the frame is shown at once.
+    constexpr uint32_t kFrameWait = 0x0015B400u;
+    constexpr uint32_t kVBlankCounter = 0x006D61ACu;
+    constexpr double kEeClockHz = 294912000.0;
+
+    void nativeFrameEnd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t target = getRegU32(ctx, 4), late = getRegU32(ctx, 5);
+        const double seconds = runtime->framePacer().frameEnd();
+        EeScheduler &scheduler = runtime->eeScheduler();
+        static uint64_t s_lastFrameCycle = scheduler.currentCycle();
+        const uint64_t accounted = scheduler.currentCycle() - s_lastFrameCycle;
+        const uint64_t realCycles = static_cast<uint64_t>(seconds * kEeClockHz);
+        if (realCycles > accounted)
+            scheduler.accountCycles(static_cast<uint32_t>(std::min<uint64_t>(realCycles - accounted, 0xFFFFFFFFu)));
+        s_lastFrameCycle = scheduler.currentCycle();
+        scheduler.presentGuestFrame();
+
+        // As an on-time frame: the counter at the target, not late, and the field following the frame count (with
+        // the parity the GS had at the first frame, so each buffer keeps its half-line offset).
+        std::memcpy(rdram + kVBlankCounter, &target, sizeof(target));
+        const uint32_t onTime = 0u;
+        std::memcpy(rdram + (late & 0x1FFFFFCu), &onTime, sizeof(onTime));
+        static const uint32_t s_fieldPhase = static_cast<uint32_t>((runtime->memory().gs().csr.load() >> 13) & 1u) ^ (target & 1u);
+        setReturnU32(ctx, (target & 1u) ^ s_fieldPhase);
+        ctx->pc = getRegU32(ctx, 31);
+    }
+
+    // JC2_FPS=1 (and the native loop): the game's frames per second, read from a host thread every 5 s: the flip's
+    // frame count (0x6D6190) and the frames that missed their vblank (0x6D61B0). Wrapping the flip instead broke the
+    // game (boot 74): it sleeps in its frame wait, where the runtime suspends the thread.
+    constexpr uint32_t kFrameCount = 0x006D6190u;
+    constexpr uint32_t kLateFrames = 0x006D61B0u;
+
+    void fpsThread(PS2Runtime *runtime)
+    {
+        uint8_t *const rdram = runtime->memory().getRDRAM();
+        auto last = std::chrono::steady_clock::now();
+        uint32_t lastFrames = rd32(rdram, kFrameCount), lastLate = rd32(rdram, kLateFrames);
+        while (!runtime->isStopRequested())
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            const auto now = std::chrono::steady_clock::now();
+            const uint32_t frames = rd32(rdram, kFrameCount), late = rd32(rdram, kLateFrames);
+            const double seconds = std::chrono::duration<double>(now - last).count();
+            std::fprintf(stderr, "[jc2:fps] %.1f fps (%u frames, %u late, in %.1f s)\n", (frames - lastFrames) / seconds,
+                         frames - lastFrames, late - lastLate, seconds);
+            last = now;
+            lastFrames = frames;
+            lastLate = late;
+        }
+    }
+
     constexpr uint32_t kGsSetDefDispEnv = 0x0010FA00u;
     PS2Runtime::RecompiledFunction g_gsSetDefDispEnv = nullptr;
 
@@ -415,6 +478,20 @@ namespace
             runtime.registerFunction(0x00100260u, &syncTrace<0x100260u, FUN_00100260_0x100260>);
             runtime.registerFunction(0x00119F00u, &syncTrace<0x119F00u, SignalSema_0x119f00>);
             std::cout << "[jc2] tracing the semaphore helpers and the CD callback" << std::endl;
+        }
+        const char *native = std::getenv("JC2_NATIVE");
+        const char *fps = std::getenv("JC2_FPS");
+        if ((native && native[0] == '1') || (fps && fps[0] == '1'))
+            std::thread(fpsThread, &runtime).detach();
+        if (native && native[0] == '1')
+        {
+            // JC2_NATIVE_FRAMES=0 keeps the vblank presentation (a bring-up split: the frame wait replaced, the
+            // frames still latched at the vblanks).
+            const char *frames = std::getenv("JC2_NATIVE_FRAMES");
+            runtime.eeScheduler().setNativeFrames(!frames || frames[0] != '0');
+            runtime.registerFunction(kFrameWait, &nativeFrameEnd);
+            std::cout << "[jc2] native loop: frames paced by the host (cap " << runtime.framePacer().cap()
+                      << " fps, 0 = unlimited)" << std::endl;
         }
         if (const char *dir = std::getenv("JC2_OVERLAY_DUMP"); dir && *dir)
         {
