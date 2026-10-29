@@ -246,3 +246,10 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
 - Open (intermittent): boot 84 (native loop, CROSS every 1 s from 200 s) stayed black from the end of the opening
   movie (~220 s) to the end of the run, the game running at 60 fps; boot 85, the same input, played the scene.
   A race; candidate: the IOP's instant CD completions (TTA's tlotr/iop-cd-timing, PS2X_IOP_CD_SECTORS_PER_SECOND).
+- Frame cost (boot 90, `JC2_FPS=1` logs the frame work at the cap): menus and movies 2-3 ms mean, the first in-game
+  scene 7.5-15.7 ms mean and 18-26 ms worst (60 fps leaves 16.7 ms). Profile of that scene (boot 91,
+  `PS2X_PROFILE=50 PS2X_PROFILE_DELAY=230`, symbolized with MSYS2 `addr2line` against `ps2EntryRunner.debug`): the EE
+  thread is busy 48%, about half in the recompiled game code; then the VIF unpack (4.7%), PSMT8 texture uploads into
+  the CPU GS memory mirror (`GSMem::WriteP8` + `PixelStorageTraits<19>`, ~5.5%), the IOP clock (2.7%) and the VU1
+  dispatcher around the AOT microcode (~6%). The GS worker is busy 35%, over half of it on one address of
+  `GS::workerLoop` (a spin-wait). Shared runtime layers (TMB's VIF1/adapter work), not JC2 code.

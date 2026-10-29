@@ -290,6 +290,24 @@ namespace
         static auto s_next = std::chrono::steady_clock::now();
         const uint32_t cap = runtime->framePacer().cap();
         const auto now = std::chrono::steady_clock::now();
+
+        // JC2_FPS=1: the frame's work (from the previous deadline to this frame end, guest threads included), mean and
+        // worst over 300 frames: the headroom below the cap's frame time.
+        static const bool s_logWork = [] { const char *v = std::getenv("JC2_FPS"); return v && v[0] == '1'; }();
+        if (s_logWork)
+        {
+            static double s_sum = 0.0, s_worst = 0.0;
+            static uint32_t s_count = 0;
+            const double work = std::chrono::duration<double, std::milli>(now - s_next).count();
+            s_sum += work;
+            s_worst = std::max(s_worst, work);
+            if (++s_count == 300u)
+            {
+                std::fprintf(stderr, "[jc2:work] frame work %.2f ms mean, %.2f ms worst (300 frames)\n", s_sum / s_count, s_worst);
+                s_sum = s_worst = 0.0;
+                s_count = 0;
+            }
+        }
         s_next = cap == 0u ? now : std::max(now, s_next + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                                std::chrono::duration<double>(1.0 / cap)));
         runtime->eeScheduler().waitHostDeadline(
