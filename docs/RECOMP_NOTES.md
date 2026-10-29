@@ -253,3 +253,10 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   the CPU GS memory mirror (`GSMem::WriteP8` + `PixelStorageTraits<19>`, ~5.5%), the IOP clock (2.7%) and the VU1
   dispatcher around the AOT microcode (~6%). The GS worker is busy 35%, over half of it on one address of
   `GS::workerLoop` (a spin-wait). Shared runtime layers (TMB's VIF1/adapter work), not JC2 code.
+- Throne room exit (boots 80-94, open): free control in the Jade Throne Room starts ~360-480 s with the CROSS script.
+  Walking, collisions, talking to Levant (his hint: through the Kumari Gate to the Forest) all work. Tried without a
+  room change: the bottom edge (centre and right), the left wall and the pink-lit doorway on it (straight, diagonal,
+  CROSS there), both pillars. Next needs game knowledge of the way out (or an event to trigger first).
+- Sound: sc3's 1895289 (SPU2 within 512 samples of the IOP clock) does not cure JC2's movie noise (boot 93: intro
+  movie 24000 zero crossings/s, ~190 clipped/s; state dump late=2250 gap=2213 drop=256); jc2/native stays on the
+  path without 4fc53883.
