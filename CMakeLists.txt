@@ -34,6 +34,20 @@ file(GLOB JC2_RUNTIME_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/runtime/*.c
 # Out of the unity batches: an edit to the game layer then rebuilds one small file, not a batch of generated code.
 set_source_files_properties(${JC2_RUNTIME_SOURCES} TARGET_DIRECTORY ps2EntryRunner PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 
+# IOP modules recompiled to native C++ by the fork's tools/iop_recomp.py (scripts/iop_recomp.sh, from the modules
+# PS2X_IOP_DUMP_MODULES saved; PS2X_IOP_NATIVE=1 runs them, as in TMB): their own object library, outside the
+# unity batches (each file's names are its own), without debug info.
+file(GLOB JC2_IOP_NATIVE_SOURCES CONFIGURE_DEPENDS "${JC2_GENERATED_DIR}/iop/*.cpp")
+if(JC2_IOP_NATIVE_SOURCES)
+    add_library(jc2_iop_native OBJECT ${JC2_IOP_NATIVE_SOURCES})
+    target_link_libraries(jc2_iop_native PRIVATE ps2x::iop)
+    set_target_properties(jc2_iop_native PROPERTIES UNITY_BUILD OFF)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(jc2_iop_native PRIVATE -O2 -g0)
+    endif()
+    target_sources(ps2EntryRunner PRIVATE $<TARGET_OBJECTS:jc2_iop_native>)
+endif()
+
 # VU1 microcode compiled ahead of time by ps2_vu_aot (scripts/recomp.sh): an object library, built at -O3 outside
 # the unity batches. Each file takes GCC several GB: at most 4 compile at once.
 file(GLOB JC2_VU1_AOT_SOURCES CONFIGURE_DEPENDS "${JC2_GENERATED_DIR}/vu1/*.cpp")

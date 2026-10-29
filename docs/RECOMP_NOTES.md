@@ -72,6 +72,23 @@ Same as the other ports on the fork (TLOTR_TTA_Recomp scripts): `extract_iso.sh`
    is dropped, it then holds the only token while it waits on 5, and the callback, which signals 5, can never
    take 4: a deadlock that does not depend on timing. The retail game runs, so the EE kernel most likely does not
    cap the count. Fork branch `jc2/ee-sema-overflow`: EE `SignalSema` counts past `max_count` (IOP untouched).
+   Merged to main as 5b67c2b. Boot 12 still logs it for semaphores 3 and 4.
+7. Boots 8-10: M2IOPSYS binds the EE servers 0x10001/0x10003 (IOP -> EE RPC, merged) and needs the EE -> IOP
+   handoff (`jc2/ee-iop-handoff`, local, tests in, not pushed). Then EE thread 1 ends with pc 0, ra 0.
+8. Boots 11-14, why main ends. Not the scene loop: its state (`0x6C47B0`) stays 0, and main never calls `0x15C140`.
+   Main's first call `0x15C0E0` saves ra (0x141D28) at 0x1FFFFE0 (its sp, main's stack is 0x1F00000-0x2000000),
+   runs `0x15B780`, `0x15C210` and `0x165390` to the end, then returns to 0: the slot was zeroed meanwhile, by thread
+   1 itself (boot 13, `JC2_WATCH`). Boot 14 (`JC2_GUARD`, a guard page on that host page) names the writer:
+   `ps2_syscalls::ReferThreadStatus` (Thread.cpp:375, `*status = {}`), once per frame (every ~4.92M EE cycles), with
+   its status struct at about 0x1FFFFD0. That is a handler's frame on an invocation stack: interrupt, alarm and
+   callback invocations queued with sp 0 get `EeScheduler::invocationStackTop()`, which takes stacks from
+   `PS2Runtime::reserveAsyncCallbackStack`, and those start at `m_asyncCallbackStackTop = PS2_RAM_SIZE`.
+   `configureReservedMemory`, which would lower that top and set a floor, has no caller. So the first
+   invocation stack is 0x1FFC000-0x1FFFFF0: the top of main's stack. JC2's per-frame handler (the vblank
+   interrupt, or its alarm) writes over main's frames. Fix to make in the fork: keep the invocation stacks out of
+   the main thread's stack, either by calling `configureReservedMemory` with a region below the main stack (the
+   ELF's `SetupThread` stack/size give it), or by reserving them from the guest heap. Any port whose main stack is
+   at the top of RAM (SetupThread stack -1) can be hit the same way.
 
 ## Overlays (plan)
 
@@ -104,3 +121,47 @@ Same as the other ports on the fork (TLOTR_TTA_Recomp scripts): `extract_iso.sh`
 - Sound, expected later (FFOP, room): LIBSD `sceSdVoiceTrans`/`sceSdBlockTrans` stuck busy (-201) and a sound thread
   waiting forever on a semaphore, as if the SPU2 DMA completion interrupt (IOP DMA 4/7) or the handler set with
   `sceSdSetTransIntrHandler` never fires. JC2 loads Sony LIBSD (and Genki's M2SOUND/MODHSYN/MODMIDI on top).
+- Renderer (BaldHuman, 2026-10-27): paraLLEl-GS is to be dropped from every port, JC2 included, once sc3-port's GPU
+  renderer (gs/gpu-renderer) is done. Do not make JC2 depend on paraLLEl-GS; check JC2 on the CPU renderer and the
+  new GPU renderer.
+- Known main regression (room, 2026-10-27): merge `6dd26a0` (`sctpt2/ipu-in-dma`) gives VP2S a black screen; fix on
+  `sctpt2/ipu-release`. JC2's local integration tree is on `6dd26a0`: a frozen screen around movies points here first.
+- Room regression harness (sc3-port, `tools/port_regress.sh` on `tools/port-regress`): each port provides
+  `scripts/regress.sh <build-dir> <out-dir>` writing `<out-dir>/summary.txt` (key=value: port, ps2recomp, route_reached,
+  exit ok|hang|crash|timeout, duration_s, frames_presented, fps_mean, fps_p10, frames_over_25ms,
+  gs_frames_per_5s_median/min, spu2_underruns, error_lines, warning_lines; NA when unknown), `last_frame.png` and
+  `run.log`. To add for JC2 once it reaches a scripted scene.
+- `ffop/iop-module-start-thread` (FFOP, coming): IRX start routines run on a loader thread, so waits inside them (LIBSD's)
+  block instead of returning -418. Also covers the IOP -> EE RPC WAIT call made outside any IOP thread, which
+  `jc2/iop-to-ee-rpc` can only log. Pick it up when it lands.
+
+## Missed functions to look for (VP2S, 2026-10-28)
+
+Each one hangs only when the game first calls it: the runtime logs `[guest-branch:missing-target]` and the thread
+goes dormant. (1) C++ this-adjusting thunks (`j method` + `addiu a0,a0,-N` + 2 nops, 16-aligned) after .text,
+before the vtables; (2) one-instruction virtual methods (`jr ra` + delay slot, padded) in the same place;
+(3) branch targets that cross into another function (needs its own entry); (4) overlay modules not on the disc
+in a form found statically: hook the game's module init and save them at run time (JC2: 0x940000); (5) a CMake
+`file(GLOB)` of module dirs without `CONFIGURE_DEPENDS` leaves new modules out of the link. Scans:
+VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
+
+## Display and movies (boots 16-29, jc2/native)
+
+- Zoomed/cropped intro and menu: JC2 calls `sceGsSetDefDispEnv(640x224)` before `sceGsResetGraph(interlace,
+  frame)`. libgraph builds the display from its parameters, whose defaults (`0x4E2AF0`: 1, 2, 1) are already
+  interlaced NTSC frame mode, so DH is 447; the runtime stub read SMODE2 (still 0) and wrote DH 223, and the
+  presenter showed the top 112 lines doubled. Fork fix cfbdc01 (stub takes the mode from `g_gparam`).
+- The intro story, the title and the long dark part after it are all one movie, `MOV/ADV0.PSS` (one decoder
+  instance, 2700 pictures, ~90 s at 30 fps). Each picture is uploaded as 1120 16x16 IMAGE transfers (CT32, TBP
+  0x2520) and drawn as one sprite over the 640x224 frame. The dark part's pictures are dark as decoded (GS trace
+  `build/gs/dark28.gsr`, rebuilt uploads); not checked against a real console yet. START at the title opens the
+  main menu; idling on the menu starts the 3D demo.
+- Tools: `PS2X_GS_RECORD` + `tools/gs_trace_dump.py` (decode a trace, rebuild uploads), `ps2_gs_replay --present`
+  (picture as the window shows it), `PS2X_MPEG_TRACE_LIMIT`, `PS2X_PAD_SCRIPT` (START opens the menu, not CROSS).
+
+## Sound
+
+- Default SPU2 path: white noise (24k zero crossings/s, RMS 18900 flat, clipping). `PS2X_SPU2_WALLCLOCK=1`
+  (now the default in `scripts/run.sh`): music, but ~277 AutoDMA underruns per 75 s (`iop_spu2.cpp`
+  `fillInputHalf`): the IOP driver restarts core0's AutoDMA late because the IOP only advances with the EE. The
+  fix is the IOP on the PC clock (native layer 2, not written yet).
