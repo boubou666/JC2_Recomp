@@ -36,8 +36,8 @@ with its dialogue. Windows comes first, then Linux.
 | Native GS renderer (OpenGL, no GS emulation) | ✅ |
 | Sound and music (SPU2 and IOP on the PC clock) | 🔧 |
 | New game: opening movie, first in-game scene and dialogue | ✅ |
-| Frame loop on the PC clock (60 fps) | 🔧 |
-| VU1 microcode without the VU interpreter | ⏳ |
+| 60 fps on the vblank grid (PC clock); native frame loop | 🔧 |
+| VU1 microcode compiled ahead of time (`ps2_vu_aot`): no VU interpreter in play | ✅ |
 | Field exploration, first battle | ⏳ |
 | Memory card saves | ⏳ |
 | Linux build | ⏳ |

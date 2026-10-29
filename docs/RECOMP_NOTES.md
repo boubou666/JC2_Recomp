@@ -232,3 +232,9 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   on the vblanks (`JC2_NATIVE_FRAMES=0`, boot 76). Cause: the main thread never sleeps, so the lower-priority threads
   that run while it waits for the vblank starve. A JC2 native loop has to let them run (a real sleep to the next host
   frame) before it can replace the grid. Wrapping the flip 0x15A150 broke the game (boot 74): it sleeps inside.
+- VU1: `PS2X_VU1_STATS=1` (jc2/native 1453fde) counts the microcode pairs run compiled and interpreted. Boot 77
+  (intro, menus, first scene): 509M pairs compiled by `ps2_vu_aot`, 0 interpreted.
+- Movie sound: with sc3's AutoDMA wall-clock change (sc3/native-spu2-adma 4fc53883) JC2's movie soundtracks (PCM
+  through core 0's AutoDMA sound data input) came out as white noise (boot 77: 24000 zero crossings/s, ~180
+  clipped samples/s); the same build without it is clean (boot 78: ~1000 crossings/s, nothing clipped). Reverted on
+  jc2/native (3465dff) and reported; sc3 is fixing it.
