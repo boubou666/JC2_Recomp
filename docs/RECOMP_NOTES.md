@@ -267,3 +267,5 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   the CSR FIELD bit read at its vblank; JC2's movie audio path depends on that bit. Returning CSR FIELD at the
   wake-up (the vblanks still run on EE time): clean, 870-1230 crossings/s, nothing clipped (boot 100).
   `JC2_NATIVE_FIELD=parity` and `JC2_NATIVE_COUNTER=1` keep the old behaviours for A/B.
+- sc3/native-spu2-adma (1083741) back on jc2/native: with the field fix, movies stay clean on it (boot 101: 866-1769
+  zero crossings/s, nothing clipped) and the AutoDMA underruns go from 89-151 to 0 at the same point of the intro.
