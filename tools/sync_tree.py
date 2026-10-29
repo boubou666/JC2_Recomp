@@ -48,10 +48,18 @@ def load_manifest(path):
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
+    # --keep a,b: subdirectories of the destination that other scripts write (generated/iop, generated/overlays):
+    # never deleted. Boot 47 ran without its native IOP modules and its overlay module after a recomp removed them.
+    args = sys.argv[1:]
+    keep = ()
+    if '--keep' in args:
+        i = args.index('--keep')
+        keep = tuple(k.strip('/') + '/' for k in args[i + 1].split(','))
+        del args[i:i + 2]
+    if len(args) not in (2, 3):
         sys.exit(__doc__)
-    source, destination = sys.argv[1], sys.argv[2]
-    manifest_path = sys.argv[3] if len(sys.argv) == 4 else None
+    source, destination = args[0], args[1]
+    manifest_path = args[2] if len(args) == 3 else None
     previous = load_manifest(manifest_path)
     os.makedirs(destination, exist_ok=True)
 
@@ -72,6 +80,8 @@ def main():
             changed += 1
 
     for relative in walk_files(destination) - wanted:
+        if relative.startswith(keep):
+            continue
         os.remove(os.path.join(destination, relative))
         changed += 1
     for directory, _, _ in sorted(os.walk(destination), key=lambda item: -len(item[0])):

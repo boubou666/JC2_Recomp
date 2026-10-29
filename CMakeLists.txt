@@ -48,6 +48,22 @@ if(JC2_IOP_NATIVE_SOURCES)
     target_sources(ps2EntryRunner PRIVATE $<TARGET_OBJECTS:jc2_iop_native>)
 endif()
 
+# Code overlays recompiled as overlay modules by scripts/overlays.sh (generated/overlays/<module>/): their own object
+# library in unity batches (every name carries its module prefix), without debug info.
+file(GLOB_RECURSE JC2_OVERLAY_SOURCES CONFIGURE_DEPENDS "${JC2_GENERATED_DIR}/overlays/*.cpp")
+if(JC2_OVERLAY_SOURCES)
+    add_library(jc2_overlays OBJECT ${JC2_OVERLAY_SOURCES})
+    target_link_libraries(jc2_overlays PRIVATE ps2_runtime)
+    # Each module's files include its <module>_stubs.h / _functions.h by name: scripts/overlays.sh copies them all
+    # into one folder (one include directory per module overflowed the Windows command line).
+    target_include_directories(jc2_overlays PRIVATE "${JC2_GENERATED_DIR}/overlays/include" "${JC2_GENERATED_DIR}")
+    set_target_properties(jc2_overlays PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 32)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(jc2_overlays PRIVATE -O2 -g0)
+    endif()
+    target_sources(ps2EntryRunner PRIVATE $<TARGET_OBJECTS:jc2_overlays>)
+endif()
+
 # VU1 microcode compiled ahead of time by ps2_vu_aot (scripts/recomp.sh): an object library, built at -O3 outside
 # the unity batches. Each file takes GCC several GB: at most 4 compile at once.
 file(GLOB JC2_VU1_AOT_SOURCES CONFIGURE_DEPENDS "${JC2_GENERATED_DIR}/vu1/*.cpp")

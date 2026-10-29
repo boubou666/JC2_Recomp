@@ -281,6 +281,107 @@ stubs = [
 # Guest functions without runtime handlers that may be referenced by address.
 # PS2Recomp keeps their guest implementation and exposes exact callable entries.
 entry_points = [
+  # --- tools/overlay_main_targets.py: main-ELF functions only reached through pointers (main data words) or from
+  # the code overlays (JALs, pointers), missed by Ghidra. Boot 46 stopped at 0x194FB0 (a leaf held at 0x520C30).
+  "FUN_0010019c@0x0010019C",  # from main data 0x5d6854
+  "FUN_00100210@0x00100210",  # from main data 0x5d6174
+  "FUN_0010047c@0x0010047C",  # from main data 0x5cafe4
+  "FUN_00106cc0@0x00106CC0",  # from main data 0x6b97f4
+  "FUN_0010d740@0x0010D740",  # from main data 0x6b99cc
+  "FUN_0010f470@0x0010F470",  # from main data 0x6b99dc
+  "FUN_00120004@0x00120004",  # from main data 0x563f20
+  "FUN_00150014@0x00150014",  # from BTLEF_M_BARRIER3_BIN_963000.bin
+  "FUN_00150018@0x00150018",  # from main data 0x564ff4
+  "FUN_0018e890@0x0018E890",  # from main data 0x51e6c4
+  "FUN_00194fb0@0x00194FB0",  # from main data 0x520c30
+  "FUN_001e001c@0x001E001C",  # from main data 0x541308
+  "FUN_00202c74@0x00202C74",  # from m2esC205_bin_972000.bin
+  "FUN_0020ff04@0x0020FF04",  # from main data 0x666774
+  "FUN_00216968@0x00216968",  # from m2esF001_bin_940000.bin
+  "FUN_00217964@0x00217964",  # from m2esA044_bin_940000.bin
+  "FUN_0021796c@0x0021796C",  # from m2esI002_bin_940000.bin
+  "FUN_0021e440@0x0021E440",  # from main data 0x5db714
+  "FUN_0022bae0@0x0022BAE0",  # from main data 0x64e418
+  "FUN_0022c900@0x0022C900",  # from main data 0x64e414
+  "FUN_0022cf00@0x0022CF00",  # from main data 0x64e464
+  "FUN_0022d8a0@0x0022D8A0",  # from main data 0x64e41c
+  "FUN_00236800@0x00236800",  # from main data 0x64e420
+  "FUN_00240044@0x00240044",  # from main data 0x5674f0
+  "FUN_002407f0@0x002407F0",  # from main data 0x5e9624
+  "FUN_0024bb40@0x0024BB40",  # from main data 0x64e424
+  "FUN_00260024@0x00260024",  # from main data 0x546ae8
+  "FUN_00260028@0x00260028",  # from main data 0x57dcc0
+  "FUN_0026002c@0x0026002C",  # from main data 0x54c9b4
+  "FUN_002a47a0@0x002A47A0",  # from main data 0x64e42c
+  "FUN_002aa560@0x002AA560",  # from main data 0x5fc1f4
+  "FUN_002c7974@0x002C7974",  # from m2esK001_bin_940000.bin
+  "FUN_002daf80@0x002DAF80",  # from main data 0x6b9b44
+  "FUN_002db450@0x002DB450",  # from main data 0x6b9ccc
+  "FUN_002de930@0x002DE930",  # from main data 0x6b9cfc
+  "FUN_002e2fa0@0x002E2FA0",  # from main data 0x6ba078
+  "FUN_002e3150@0x002E3150",  # from main data 0x6ba070
+  "FUN_002e3160@0x002E3160",  # from main data 0x6ba06c
+  "FUN_002fa6b0@0x002FA6B0",  # from main data 0x6ba3f8
+  "FUN_003072e0@0x003072E0",  # from BTLEF_M_GUARD_B2_BIN_963000.bin
+  "FUN_0030d3c0@0x0030D3C0",  # from main data 0x6ba8f4
+  "FUN_00329da0@0x00329DA0",  # from main data 0x6baccc
+  "FUN_0032e4c0@0x0032E4C0",  # from main data 0x6bb0c4
+  "FUN_0032e980@0x0032E980",  # from main data 0x6bb0bc
+  "FUN_0032e9f0@0x0032E9F0",  # from main data 0x6bb1c4
+  "FUN_0032f160@0x0032F160",  # from main data 0x6bb1bc
+  "FUN_00342c40@0x00342C40",  # from main data 0x6bb500
+  "FUN_00344ef0@0x00344EF0",  # from main data 0x6bb4f8
+  "FUN_00353654@0x00353654",  # from main data 0x6a2754
+  "FUN_00363034@0x00363034",  # from main data 0x6b1390
+  "FUN_00370004@0x00370004",  # from main data 0x5925c8
+  "FUN_00370008@0x00370008",  # from main data 0x5938e8
+  "FUN_0037005c@0x0037005C",  # from main data 0x5f1f70
+  "FUN_00377780@0x00377780",  # from main data 0x6bc698
+  "FUN_00385240@0x00385240",  # from main data 0x6baec4
+  "FUN_00396340@0x00396340",  # from main data 0x6bcbe0
+  "FUN_00396350@0x00396350",  # from main data 0x6bcbdc
+  "FUN_00398380@0x00398380",  # from main data 0x6bcc80
+  "FUN_003983b0@0x003983B0",  # from main data 0x6bcc7c
+  "FUN_0039bf00@0x0039BF00",  # from main data 0x6bccec
+  "FUN_003a3010@0x003A3010",  # from main data 0x6bd214
+  "FUN_003a33a0@0x003A33A0",  # from main data 0x6bd3a4
+  "FUN_003aff60@0x003AFF60",  # from main data 0x6bdeec
+  "FUN_003b0380@0x003B0380",  # from main data 0x6bdcc0
+  "FUN_003c0004@0x003C0004",  # from main data 0x595ef8
+  "FUN_003c0008@0x003C0008",  # from main data 0x5943e8
+  "FUN_003c0028@0x003C0028",  # from main data 0x5643d0
+  "FUN_003c7720@0x003C7720",  # from main data 0x6beb50
+  "FUN_003c7730@0x003C7730",  # from main data 0x6beb4c
+  "FUN_003c8ac0@0x003C8AC0",  # from main data 0x6beb90
+  "FUN_003c8ad0@0x003C8AD0",  # from main data 0x6beb8c
+  "FUN_003cef70@0x003CEF70",  # from main data 0x6bebf4
+  "FUN_003cef80@0x003CEF80",  # from main data 0x6bebf0
+  "FUN_003cef90@0x003CEF90",  # from main data 0x6beccc
+  "FUN_003cefa0@0x003CEFA0",  # from main data 0x6becc8
+  "FUN_003cfe90@0x003CFE90",  # from main data 0x6bebec
+  "FUN_003cfea0@0x003CFEA0",  # from main data 0x6bec0c
+  "FUN_003cfeb0@0x003CFEB0",  # from main data 0x6bec2c
+  "FUN_003cfec0@0x003CFEC0",  # from main data 0x6bec4c
+  "FUN_003cfed0@0x003CFED0",  # from main data 0x6bec6c
+  "FUN_003cfee0@0x003CFEE0",  # from main data 0x6bec8c
+  "FUN_003cfef0@0x003CFEF0",  # from main data 0x6becac
+  "FUN_003e68d0@0x003E68D0",  # from main data 0x6beda0
+  "FUN_003e68e0@0x003E68E0",  # from main data 0x6bed9c
+  "FUN_003e6af0@0x003E6AF0",  # from main data 0x6bedcc
+  "FUN_004006f0@0x004006F0",  # from main data 0x6bf290
+  "FUN_00410040@0x00410040",  # from main data 0x5ab970
+  "FUN_00440028@0x00440028",  # from main data 0x550824
+  "FUN_0044002c@0x0044002C",  # from main data 0x556820
+  "FUN_004433c0@0x004433C0",  # from main data 0x652094
+  "FUN_0047cce0@0x0047CCE0",  # from main data 0x65f914
+  "FUN_0047f130@0x0047F130",  # from main data 0x65fdb4
+  "FUN_00480228@0x00480228",  # from main data 0x652224
+  "FUN_0048b820@0x0048B820",  # from main data 0x660804
+  "FUN_004c0000@0x004C0000",  # from main data 0x5e0468
+  "FUN_004c0004@0x004C0004",  # from main data 0x593318
+  "FUN_004c0048@0x004C0048",  # from main data 0x56c8c4
+  "FUN_004c004c@0x004C004C",  # from main data 0x5511fc
+  "FUN_004d3380@0x004D3380",  # from main data 0x669b34
   "_d_ulltod@0x001000D0",
   "_dpfeq@0x00100130",
   "_dpfle@0x001001A0",
