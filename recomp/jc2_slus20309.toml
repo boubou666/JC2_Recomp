@@ -26,6 +26,11 @@ stubs = [
   # 0x150A60), and boot 2 spun in its retry delay at 0x1249B0. The other two unstubbed cdvdfsv binders (0x1241A8
   # N-command, 0x1244C0 S-command) are only called from functions already stubbed.
   "sceCdDiskReady@0x00124910",
+  # --- Manual: libmpeg's sceMpegIsEnd (0x118108: `lw v1, 0x40(a0); jr ra; lw v0, 0(v1)`, between sceMpegGetDecodeMode
+  # and sceMpegReset), missed by the analyzer. Left native it read libmpeg's own state, which the MPEG HLE never sets,
+  # so the movie player's loop (0x1533C0: GetPicture ... until IsEnd) never ended: boots 41-43 stayed on the opening
+  # movie's last (faded) picture. The HLE's sceMpegIsEnd handles games that stream the movie with their own CD loop.
+  "sceMpegIsEnd@0x00118108",
   # --- Analyzer output below
   "sceGsResetGraph@0x0010F7F8",
   "sceGsResetPath@0x0010F998",
