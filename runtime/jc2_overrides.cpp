@@ -5,6 +5,7 @@
 #include "ps2_recompiled_functions.h"
 #include "runtime/ee_scheduler.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -143,8 +144,14 @@ namespace
     void sceneTraceThread(PS2Runtime *runtime)
     {
         uint32_t last = ~0u;
+        // JC2_WATCH=<hex address>[,<byte count>]: with a count, the whole range is logged (as words) when any of it
+        // changes. Boot 57: JC2's file-load request table at 0x8B9860 (4 slots of 32 bytes).
         const char *watch = std::getenv("JC2_WATCH");
-        const uint32_t watchAddress = watch && *watch ? static_cast<uint32_t>(std::strtoul(watch, nullptr, 16)) : 0u;
+        char *watchEnd = nullptr;
+        const uint32_t watchAddress = watch && *watch ? static_cast<uint32_t>(std::strtoul(watch, &watchEnd, 16)) : 0u;
+        const uint32_t watchBytes =
+            watchEnd && *watchEnd == ',' ? std::min<uint32_t>(static_cast<uint32_t>(std::strtoul(watchEnd + 1, nullptr, 0)) & ~3u, 256u) : 0u;
+        std::vector<uint32_t> lastRange(watchBytes / 4u, ~0u);
         uint32_t lastWatched = ~0u;
         while (!runtime->isStopRequested())
         {
@@ -164,7 +171,30 @@ namespace
                              static_cast<unsigned long long>(runtime->eeScheduler().currentCycle()));
                 s_lastSmode2 = smode2;
             }
-            if (watchAddress != 0u)
+            if (watchAddress != 0u && watchBytes != 0u)
+            {
+                bool changed = false;
+                for (uint32_t i = 0; i < lastRange.size(); ++i)
+                {
+                    const uint32_t value = rd32(rdram, watchAddress + i * 4u);
+                    changed |= value != lastRange[i];
+                    lastRange[i] = value;
+                }
+                if (changed)
+                {
+                    std::string line;
+                    char word[12];
+                    for (const uint32_t value : lastRange)
+                    {
+                        std::snprintf(word, sizeof(word), " %08x", value);
+                        line += word;
+                    }
+                    std::fprintf(stderr, "[jc2:watch] 0x%x:%s (EE thread %d, cycle %llu)\n", watchAddress, line.c_str(),
+                                 runtime->eeScheduler().currentThreadId(),
+                                 static_cast<unsigned long long>(runtime->eeScheduler().currentCycle()));
+                }
+            }
+            else if (watchAddress != 0u)
             {
                 const uint32_t value = rd32(rdram, watchAddress);
                 if (value != lastWatched)

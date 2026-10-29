@@ -200,3 +200,12 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   ports/slots). Meanwhile the game finds no save (`GetDir '/BASLUS-20309MAYU2'` -> 0 entries) and polls the card
   (GetInfo + Sync, ~216 times). Hypothesis: a memory-card prompt after "no save found" that is neither drawn nor
   driven. JC2_TRACE_SCRIPT=1 logs the script's commands, JC2_WATCH=879fac the cursor.
+- Solved (boots 57-62): the slots at 0x8B9860 are file-load requests (state +0x10, handle +0xC; 0x41D3F0 steps them).
+  Slot 0 waited in state 9 for the stream record of its handle (0x89DD40 + handle*64 + 0x280: chunk 0x2000 bytes,
+  EE source +0x290, IOP buffer +0x2A4, bytes in flight +0x2B0) to come back to 0 bytes in flight. The EE sends each
+  chunk to the IOP with sceSifSetDma (0x486920), and the IOP answers through an EE RPC server (sid 0x10001,
+  handler 0x234A60, codes 0x400-0x405; 0x403 = chunk done). The runtime refused that call ("[sifrpc] IOP -> EE
+  call sid=0x10001 fno=1027: no EE server queue, refused"): SifRegisterRpc read cfunc, cbuf and qd from the stack,
+  while the EE EABI passes them in t0-t2, so the server's queue was 0. Fixed on jc2/native c3ae3e1. Boot 62: the
+  scene goes on (the hero walks the room with a "!" bubble, the next shots and portraits follow).
+  JC2_WATCH=<addr>,<bytes> logs a whole range when any word of it changes (needs JC2_TRACE_SCENE=1).
