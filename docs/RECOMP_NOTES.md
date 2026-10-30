@@ -304,3 +304,10 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   unchanged. So the consumer that feeds the IOP does not free this ring as assumed (another read position, or another
   buffer). Next: find the reader of the ring at 0x18A4B00 (the SIF DMA sources 0x18A....-0x18B.... of 0x486920 calls)
   and which counter it moves.
+- The ring's reader (same night): 0x155E20 (called from 0x20E870) is the movie audio pump. It queries the sound
+  driver with 0x1588F0(1, 9, 0) (command 9; the result minus the ring object's +0x44 is the playback position),
+  computes from it how much of the destination (the play buffer on the IOP side) has been played (0x156130), and
+  moves data from the PCM ring (0x1586D0, used -= moved) only when both the ring holds and the destination has room
+  for at least 0x400 bytes. So the refill is paced by the playback position the IOP reports. Boot 113: the ring stays
+  full the whole movie, i.e. the pump moves nothing. Next: trace 0x1588F0(1, 9) results during the movie (do they
+  advance at 48 kHz, in which units) and what M2SOUND reads to answer (an SPU2 register our SPU2 may not update).
