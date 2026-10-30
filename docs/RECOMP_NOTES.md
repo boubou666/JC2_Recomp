@@ -288,3 +288,11 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   that is not byte-exact flips the alignment. The game's copy into its ring (0x1590E0 -> memcpy 0x152550, byte to
   quadword loops) is byte-exact. Still to find: the stage that drops or adds a byte (asked TMB, who overrides its
   movie PCM callback).
+- Located (boots 107-108): a dump of the game's movie PCM ring (0x18A0000, `JC2_DUMP=18a0000,0x20000,150,<file>`)
+  during the New-game movie (W01.PSS) holds the soundtrack in order except 0x1000-byte blocks holding the stream from
+  23 bytes (0x17 = PES header 19 + sub-header 4) too early, the following block restarting at the right offset, and
+  0xFDB bytes of the stream missing before each such block. `JC2_TRACE_PCM=<n>` shows the libmpeg HLE hands the PCM
+  callback (0x153880) correct data: 9315 calls, all starting ff a0 00 00, lengths 4077 or 4063. So the bytes go wrong
+  inside the game's ring code: 0x155950 (reserve), 0x1590E0 (copy, memcpy 0x152550), 0x155AE0 (commit). 4073 + 0x17
+  = 0x1000: a reservation or commit that rounds a 4073-byte write to 0x1000 fits. Next: trace those three around a
+  bad block (write position, size before and after) and compare with the guest code's intent.

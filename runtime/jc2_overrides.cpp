@@ -242,6 +242,27 @@ namespace
     // script then stops and runs again next frame). Logs each distinct (opcode, a2, a3, result) once, with the
     // caller: the command a stuck scene waits on keeps returning 0.
     // The script calls three command functions: 0x1EB5D0 (most commands), 0x1F4B20 and 0x1F3390.
+    // JC2_TRACE_PCM=<count>: logs the movie PCM stream callback (0x153880, registered for sceMpegStrPCM): the data
+    // pointer and length libmpeg hands it, the 4 bytes there (the private stream 1 sub-header, ff a0 00 00, when the
+    // pointer is right) and the PTS, for the first <count> calls.
+    constexpr uint32_t kPcmCallback = 0x00153880u;
+    PS2Runtime::RecompiledFunction g_pcmCallback = nullptr;
+    uint32_t g_pcmTraceLeft = 0;
+
+    void pcmCallbackTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (g_pcmTraceLeft != 0u)
+        {
+            --g_pcmTraceLeft;
+            const uint32_t cb = getRegU32(ctx, 5);
+            const uint32_t data = rd32(rdram, cb + 8u), len = rd32(rdram, cb + 12u);
+            const uint8_t *p = rdram + (data & 0x1FFFFFFu);
+            std::fprintf(stderr, "[jc2:pcm] data=0x%x len=%u head=%02x%02x%02x%02x pts=0x%x%08x\n", data, len, p[0], p[1], p[2],
+                         p[3], rd32(rdram, cb + 20u), rd32(rdram, cb + 16u));
+        }
+        g_pcmCallback(rdram, ctx, runtime);
+    }
+
     constexpr uint32_t kScriptCommands[] = {0x001EB5D0u, 0x001F4B20u, 0x001F3390u};
     std::map<uint32_t, PS2Runtime::RecompiledFunction> g_scriptCommands;
 
@@ -350,6 +371,22 @@ namespace
     constexpr uint32_t kFrameCount = 0x006D6190u;
     constexpr uint32_t kLateFrames = 0x006D61B0u;
 
+    // JC2_DUMP=<hex address>,<bytes>,<seconds>,<file> (bring-up aid): after that many seconds, writes that much guest
+    // RAM to the file, once (e.g. the movie audio ring 0x18A0000, while the New-game movie plays).
+    void dumpThread(PS2Runtime *runtime, uint32_t address, uint32_t bytes, double seconds, std::string path)
+    {
+        std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
+        if (runtime->isStopRequested())
+            return;
+        const uint8_t *rdram = runtime->memory().getRDRAM();
+        if (FILE *out = std::fopen(path.c_str(), "wb"))
+        {
+            std::fwrite(rdram + (address & 0x1FFFFFFu), 1, std::min<uint32_t>(bytes, 0x2000000u - (address & 0x1FFFFFFu)), out);
+            std::fclose(out);
+            std::fprintf(stderr, "[jc2:dump] 0x%x + 0x%x -> %s\n", address, bytes, path.c_str());
+        }
+    }
+
     void fpsThread(PS2Runtime *runtime)
     {
         uint8_t *const rdram = runtime->memory().getRDRAM();
@@ -456,6 +493,12 @@ namespace
         if (const char *guard = std::getenv("JC2_GUARD"); guard && *guard)
             installGuard(runtime, static_cast<uint32_t>(std::strtoul(guard, nullptr, 16)));
 #endif
+        if (const char *trace = std::getenv("JC2_TRACE_PCM"); trace && *trace)
+        {
+            g_pcmTraceLeft = static_cast<uint32_t>(std::strtoul(trace, nullptr, 0));
+            if ((g_pcmCallback = runtime.lookupFunction(kPcmCallback)))
+                runtime.registerFunction(kPcmCallback, &pcmCallbackTrace);
+        }
         if (const char *trace = std::getenv("JC2_TRACE_SCRIPT"); trace && *trace == '1')
         {
             for (const uint32_t address : kScriptCommands)
@@ -540,6 +583,15 @@ namespace
         }
         const char *native = std::getenv("JC2_NATIVE");
         const char *fps = std::getenv("JC2_FPS");
+        if (const char *dump = std::getenv("JC2_DUMP"); dump && *dump)
+        {
+            char *end = nullptr;
+            const uint32_t address = static_cast<uint32_t>(std::strtoul(dump, &end, 16));
+            const uint32_t bytes = end && *end == ',' ? static_cast<uint32_t>(std::strtoul(end + 1, &end, 0)) : 0u;
+            const double seconds = end && *end == ',' ? std::strtod(end + 1, &end) : 0.0;
+            if (bytes != 0u && end && *end == ',')
+                std::thread(dumpThread, &runtime, address, bytes, seconds, std::string(end + 1)).detach();
+        }
         if ((native && native[0] == '1') || (fps && fps[0] == '1'))
             std::thread(fpsThread, &runtime).detach();
         if (native && native[0] == '1')
