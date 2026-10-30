@@ -269,3 +269,8 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   `JC2_NATIVE_FIELD=parity` and `JC2_NATIVE_COUNTER=1` keep the old behaviours for A/B.
 - sc3/native-spu2-adma (1083741) back on jc2/native: with the field fix, movies stay clean on it (boot 101: 866-1769
   zero crossings/s, nothing clipped) and the AutoDMA underruns go from 89-151 to 0 at the same point of the intro.
+- Throne room exit (from the owner): stand on the yin-yang disc on the left and press X. Boot 103: the Wormhole
+  Forest loads and Levant's tutorial plays (BeastAmulet, Divine Beasts' nests). Pad script: CROSS every 2 s to
+  470 s, then LEFT 3 s and CROSS presses around the disc from 480 s.
+- The New-game movie's sound is noise on the vblank grid too (boot 104: 7600-15000 zero crossings/s, clipping), and
+  not byte-swapped (boot 102); the intro movie is clean in the same builds. A second, movie-specific fault.
