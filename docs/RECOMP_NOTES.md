@@ -296,3 +296,11 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   inside the game's ring code: 0x155950 (reserve), 0x1590E0 (copy, memcpy 0x152550), 0x155AE0 (commit). 4073 + 0x17
   = 0x1000: a reservation or commit that rounds a 4073-byte write to 0x1000 fits. Next: trace those three around a
   bad block (write position, size before and after) and compare with the guest code's intent.
+- New-game movie noise, continued (boots 109-113): the libmpeg HLE ignores stream callbacks' results (no back-pressure:
+  libmpeg would hand a refused packet again), so a host FIFO for what the PCM ring cannot take was tried
+  (`JC2_PCM_QUEUE=1`, off by default). Queueing whole packets left the ring short of full and the movie silent;
+  queueing only the bytes that do not fit fills it to the brim, but the ring then stays exactly full for the whole
+  movie (used 0x18000 of 0x18000, never lowered) while the AutoDMA stream to the IOP runs on, and the noise is
+  unchanged. So the consumer that feeds the IOP does not free this ring as assumed (another read position, or another
+  buffer). Next: find the reader of the ring at 0x18A4B00 (the SIF DMA sources 0x18A....-0x18B.... of 0x486920 calls)
+  and which counter it moves.
