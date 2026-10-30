@@ -324,3 +324,7 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   sceMpegCreate fixed it too, boot 118, but a fork test expects callbacks to outlive a re-create.) Boot 118: one call per
   packet, New-game movie 1600-4300 zero crossings/s, RMS 1600-3300, nothing clipped (was 6000-10600/s, RMS 11000,
   1700 clipped per 5 s). The PCM FIFO experiment (`JC2_PCM_QUEUE`) is gone.
+- native/gs-backend 19edc88 merged into jc2/native (af3cc76; the partial-FBMSK conflict resolved to gs-backend's
+  uColorKeep). Boot 121, same route to the Wormhole Forest: 59.2-60 fps, frame work 7-14 ms mean and 12-27 ms worst
+  in the throne room and the forest, 2-3.5 ms in menus: about as before the merge (7.5-15.7 / 18-26 ms), so JC2's
+  in-game cost is not the CLUT read-backs it removed. Still the VIF unpack, GSMem::WriteP8 and the GS worker spin.
