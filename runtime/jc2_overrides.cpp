@@ -14,7 +14,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -251,101 +250,13 @@ namespace
     PS2Runtime::RecompiledFunction g_pcmCallback = nullptr;
     uint32_t g_pcmTraceLeft = 0;
 
-    // The movie PCM queue (JC2_PCM_QUEUE=1, off by default: it does not cure the New-game movie's noise, see below). The callback copies a packet's PCM into the game's
-    // ring (object at *(user + 0x5C): +0 header state, +0x30 base, +0x34 write position, +0x38 bytes used, +0x3C size,
-    // 96 KB for the movies; reserve 0x155950, commit 0x155AE0) as far as it fits, returns 0 only when nothing fit, and
-    // the bytes that did not fit are dropped: libmpeg would hand that packet again later, the libmpeg HLE ignores the
-    // result. With odd-sized payloads every drop put the PCM one byte off: the New-game movie's noise (boots 102-108).
-    // Here the bytes the ring cannot take wait in a host FIFO, in order, and fill the ring as it drains. The ring still
-    // fills to the brim as on the console (the movie stream starts from a full ring: queueing whole packets only left
-    // it short of full and the movie silent, boots 109-110). Boot 113: the ring then stays exactly full for the whole
-    // movie (used = size, never lowered) while the AutoDMA stream to the IOP runs on, and the noise is unchanged: the
-    // consumer does not free this ring the way assumed, so the cause lies elsewhere. The source is read as the callback reads it: from
-    // data + 4 (past the ff a0 00 00 sub-header), wrapping at the end of the PSS ring (object at *(user + 0x50): +0
-    // base, +4 size).
-    constexpr uint32_t kPcmRingCommit = 0x00155AE0u;
-    bool g_pcmQueueOn = false;
-    std::deque<uint8_t> g_pcmPending;
-    uint32_t g_pcmQueueUser = 0;
-
-    void pcmCallbackQueued(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-    {
-        const uint32_t cb = getRegU32(ctx, 5), user = getRegU32(ctx, 6);
-        const uint32_t data = rd32(rdram, cb + 8u), len = rd32(rdram, cb + 12u);
-        const uint32_t ring = rd32(rdram, user + 0x5Cu), pss = rd32(rdram, user + 0x50u);
-        if (user != g_pcmQueueUser)
-        {
-            g_pcmPending.clear(); // another movie
-            g_pcmQueueUser = user;
-        }
-        const auto headerDone = [&] { return rd32(rdram, ring) != 0u; };
-        const auto room = [&] { return rd32(rdram, ring + 0x3Cu) - rd32(rdram, ring + 0x38u); };
-        const uint32_t pcm = len > 4u ? len - 4u : 0u;
-        const uint32_t pssBase = rd32(rdram, pss), pssSize = rd32(rdram, pss + 4u);
-        const auto sourceByte = [&](uint32_t i)
-        {
-            uint32_t addr = data + 4u + i;
-            if (pssSize != 0u && addr >= pssBase + pssSize)
-                addr -= pssSize;
-            return rdram[addr & 0x1FFFFFFu];
-        };
-
-        // A ring back in its header state is a restarted stream: what was pending belongs to the old one.
-        if (!g_pcmPending.empty() && !headerDone())
-        {
-            std::fprintf(stderr, "[jc2:pcmq] ring 0x%x restarted, %zu pending bytes dropped\n", ring, g_pcmPending.size());
-            g_pcmPending.clear();
-        }
-
-        // The pending bytes first, as far as the ring takes them.
-        static const PS2Runtime::RecompiledFunction s_commit = runtime->lookupFunction(kPcmRingCommit);
-        if (!g_pcmPending.empty() && headerDone() && s_commit)
-        {
-            const uint32_t n = static_cast<uint32_t>(std::min<size_t>(room(), g_pcmPending.size()));
-            if (n != 0u)
-            {
-                const uint32_t base = rd32(rdram, ring + 0x30u), size = rd32(rdram, ring + 0x3Cu);
-                uint32_t pos = rd32(rdram, ring + 0x34u);
-                for (uint32_t i = 0; i < n; ++i)
-                {
-                    rdram[(base + pos) & 0x1FFFFFFu] = g_pcmPending.front();
-                    g_pcmPending.pop_front();
-                    pos = (pos + 1u) % size;
-                }
-                R5900Context commit = *ctx;
-                SET_GPR_U32(&commit, 4, ring);
-                SET_GPR_U32(&commit, 5, n);
-                SET_GPR_U32(&commit, 31, 0u);
-                commit.pc = kPcmRingCommit;
-                s_commit(rdram, &commit, runtime);
-            }
-        }
-
-        if (g_pcmPending.empty())
-        {
-            // The game's own copy, then what it could not take waits.
-            const bool header = !headerDone();
-            const uint32_t free = header ? pcm : room();
-            g_pcmCallback(rdram, ctx, runtime);
-            for (uint32_t i = free; i < pcm; ++i)
-                g_pcmPending.push_back(sourceByte(i));
-            return;
-        }
-        for (uint32_t i = 0; i < pcm; ++i)
-            g_pcmPending.push_back(sourceByte(i));
-        static size_t s_peak = 0;
-        if (g_pcmPending.size() > s_peak + 0x10000u)
-        {
-            s_peak = g_pcmPending.size();
-            std::fprintf(stderr, "[jc2:pcmq] %zu bytes pending; ring 0x%x: used=0x%x size=0x%x\n", s_peak, ring,
-                         rd32(rdram, ring + 0x38u), rd32(rdram, ring + 0x3Cu));
-        }
-        setReturnU32(ctx, 1u);
-        ctx->pc = getRegU32(ctx, 31);
-    }
+    // The ring the PCM callback fills (*(user + 0x5C): +0 header state, +0x30 base, +0x34 write position, +0x38 bytes
+    // used, +0x3C size), which the pump 0x155E20 below empties into the IOP's play buffer.
+    uint32_t g_pcmRing = 0;
 
     void pcmCallbackTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        g_pcmRing = rd32(rdram, getRegU32(ctx, 6) + 0x5Cu);
         if (g_pcmTraceLeft != 0u)
         {
             --g_pcmTraceLeft;
@@ -355,10 +266,28 @@ namespace
             std::fprintf(stderr, "[jc2:pcm] data=0x%x len=%u head=%02x%02x%02x%02x pts=0x%x%08x\n", data, len, p[0], p[1], p[2],
                          p[3], rd32(rdram, cb + 20u), rd32(rdram, cb + 16u));
         }
-        if (g_pcmQueueOn)
-            pcmCallbackQueued(rdram, ctx, runtime);
-        else
-            g_pcmCallback(rdram, ctx, runtime);
+        g_pcmCallback(rdram, ctx, runtime);
+    }
+
+    // JC2_TRACE_PUMP=<count>: the movie audio pump's destination space (0x156130, called by the pump 0x155E20 with the
+    // sound driver's playback position minus the stream's base, from 0x1588F0(1, 9, 0)): the position, the two free
+    // regions it returns and the stream object's destination fields, for the first <count> calls.
+    constexpr uint32_t kPumpSpace = 0x00156130u;
+    PS2Runtime::RecompiledFunction g_pumpSpace = nullptr;
+    uint32_t g_pumpTraceLeft = 0;
+
+    void pumpSpaceTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t size1 = getRegU32(ctx, 5), size2 = getRegU32(ctx, 7), obj = getRegU32(ctx, 8), position = getRegU32(ctx, 9);
+        g_pumpSpace(rdram, ctx, runtime);
+        if (g_pumpTraceLeft != 0u)
+        {
+            --g_pumpTraceLeft;
+            std::fprintf(stderr, "[jc2:pump] obj=0x%x base=0x%x pcm ring=0x%x pos=0x%x free=0x%x+0x%x obj+44=0x%x +48=0x%x +4c=0x%x +50=0x%x +54=0x%x +58=0x%x ring used=0x%x\n",
+                         obj, rd32(rdram, obj + 0x30u), g_pcmRing, position, rd32(rdram, size1), rd32(rdram, size2), rd32(rdram, obj + 0x44u), rd32(rdram, obj + 0x48u),
+                         rd32(rdram, obj + 0x4Cu), rd32(rdram, obj + 0x50u), rd32(rdram, obj + 0x54u), rd32(rdram, obj + 0x58u),
+                         rd32(rdram, obj + 0x38u));
+        }
     }
 
     constexpr uint32_t kScriptCommands[] = {0x001EB5D0u, 0x001F4B20u, 0x001F3390u};
@@ -593,11 +522,15 @@ namespace
 #endif
         {
             const char *trace = std::getenv("JC2_TRACE_PCM");
-            const char *queue = std::getenv("JC2_PCM_QUEUE");
             g_pcmTraceLeft = trace && *trace ? static_cast<uint32_t>(std::strtoul(trace, nullptr, 0)) : 0u;
-            g_pcmQueueOn = queue && queue[0] == '1';
-            if ((g_pcmQueueOn || g_pcmTraceLeft != 0u) && (g_pcmCallback = runtime.lookupFunction(kPcmCallback)))
+            if (g_pcmTraceLeft != 0u && (g_pcmCallback = runtime.lookupFunction(kPcmCallback)))
                 runtime.registerFunction(kPcmCallback, &pcmCallbackTrace);
+        }
+        {
+            const char *trace = std::getenv("JC2_TRACE_PUMP");
+            g_pumpTraceLeft = trace && *trace ? static_cast<uint32_t>(std::strtoul(trace, nullptr, 0)) : 0u;
+            if (g_pumpTraceLeft != 0u && (g_pumpSpace = runtime.lookupFunction(kPumpSpace)))
+                runtime.registerFunction(kPumpSpace, &pumpSpaceTrace);
         }
         if (const char *trace = std::getenv("JC2_TRACE_SCRIPT"); trace && *trace == '1')
         {

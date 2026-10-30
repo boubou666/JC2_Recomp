@@ -298,7 +298,7 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   bad block (write position, size before and after) and compare with the guest code's intent.
 - New-game movie noise, continued (boots 109-113): the libmpeg HLE ignores stream callbacks' results (no back-pressure:
   libmpeg would hand a refused packet again), so a host FIFO for what the PCM ring cannot take was tried
-  (`JC2_PCM_QUEUE=1`, off by default). Queueing whole packets left the ring short of full and the movie silent;
+  (`JC2_PCM_QUEUE=1`, since removed). Queueing whole packets left the ring short of full and the movie silent;
   queueing only the bytes that do not fit fills it to the brim, but the ring then stays exactly full for the whole
   movie (used 0x18000 of 0x18000, never lowered) while the AutoDMA stream to the IOP runs on, and the noise is
   unchanged. So the consumer that feeds the IOP does not free this ring as assumed (another read position, or another
@@ -311,3 +311,16 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   for at least 0x400 bytes. So the refill is paced by the playback position the IOP reports. Boot 113: the ring stays
   full the whole movie, i.e. the pump moves nothing. Next: trace 0x1588F0(1, 9) results during the movie (do they
   advance at 48 kHz, in which units) and what M2SOUND reads to answer (an SPU2 register our SPU2 may not update).
+- Found and fixed (boots 114-118, 2026-10-30): the pump does work (boot 114, `JC2_TRACE_PUMP`: the play position
+  advances and the pump writes 0x1000 behind it), and an AutoDMA input dump (`PS2X_SPU2_ADMA_DUMP=<file>`, local
+  bring-up aid in the fork's SPU2) lined up against W01.PSS's PCM showed the SPU2 gets the right movie PCM, but in
+  0x1000-0x2000-byte pieces repeated, skipped and off the 0x200 left/right grid. Boot 117 (`JC2_TRACE_PCM` and
+  `JC2_TRACE_PUMP` together) gave the cause: every audio packet reached the PCM callback three times, same data and
+  PTS. The libmpeg HLE keeps stream callbacks per sceMpeg address and drops them only in sceMpegDelete, which JC2
+  does not route to the HLE (its own code runs), so each movie's sceMpegAddStrCallback added one more: the intro
+  (first movie) played clean, the New-game movie (third) got each packet three times, the ring overflowed with
+  repeats and the callback's partial copies broke the byte alignment. Fix in the HLE (jc2/native): a stream callback
+  registered again on the same sceMpeg (same type, id, function, data) replaces itself. (Clearing the callbacks in
+  sceMpegCreate fixed it too, boot 118, but a fork test expects callbacks to outlive a re-create.) Boot 118: one call per
+  packet, New-game movie 1600-4300 zero crossings/s, RMS 1600-3300, nothing clipped (was 6000-10600/s, RMS 11000,
+  1700 clipped per 5 s). The PCM FIFO experiment (`JC2_PCM_QUEUE`) is gone.
