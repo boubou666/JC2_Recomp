@@ -3,6 +3,7 @@
 #include "game_overrides.h"
 #include "ps2_runtime.h"
 #include "ps2_recompiled_functions.h"
+#include "Stubs/MPEG.h"
 #include "runtime/ee_scheduler.h"
 
 #include <algorithm>
@@ -526,6 +527,16 @@ namespace
             runtime.registerFunction(0x00100260u, &syncTrace<0x100260u, FUN_00100260_0x100260>);
             runtime.registerFunction(0x00119F00u, &syncTrace<0x119F00u, SignalSema_0x119f00>);
             std::cout << "[jc2] tracing the semaphore helpers and the CD callback" << std::endl;
+        }
+        // Movie audio reaches the game as far ahead as the libmpeg HLE demuxes video (by default up to 128 decoded
+        // pictures, about 4 s), more than JC2's movie audio ring holds: the IOP played some of it before the game had
+        // byte-swapped it (the PSS audio is big-endian PCM), and the New-game movie came out as noise, blocks in the
+        // right and the wrong byte order (boots 102-104). A lead of a few pictures, as TMB's.
+        {
+            size_t picturesAhead = 6u;
+            if (const char *value = std::getenv("JC2_MOVIE_PICTURES_AHEAD"); value && *value)
+                picturesAhead = static_cast<size_t>(std::max(1, std::atoi(value)));
+            ps2_stubs::setMpegMaxPicturesAhead(picturesAhead);
         }
         const char *native = std::getenv("JC2_NATIVE");
         const char *fps = std::getenv("JC2_FPS");

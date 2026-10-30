@@ -274,3 +274,11 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   470 s, then LEFT 3 s and CROSS presses around the disc from 480 s.
 - The New-game movie's sound is noise on the vblank grid too (boot 104: 7600-15000 zero crossings/s, clipping), and
   not byte-swapped (boot 102); the intro movie is clean in the same builds. A second, movie-specific fault.
+- New-game movie noise, findings so far (boots 102-106): the same on the vblank grid, with and without sc3's SPU2
+  change (old path, boot 106: 5900-14500 zero crossings/s), and with the MPEG lead capped at 6 pictures (boot 105;
+  kept, as TMB). Block by block the output alternates between correct and byte-swapped runs (4 correct blocks of
+  256 samples, then a variable swapped run). All movies have the same audio (SShd type 1, 16-bit PCM, 48 kHz stereo,
+  interleave 0x200). JC2's PCM stream callback (0x153880, registered as stream type 2 = sceMpegStrPCM) skips the
+  4-byte sub-header and copies the big-endian PCM into the game's ring (0x1590E0) without swapping; the swap happens
+  later, on the way to the SPU2 (JC2's stream to the IOP, record at 0x89DD40, chunks by sceSifSetDma 0x486920,
+  acknowledged through EE RPC sid 0x10001). Next: where the swap is done and why some chunks are played unswapped.
