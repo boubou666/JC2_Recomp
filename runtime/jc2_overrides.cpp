@@ -290,6 +290,21 @@ namespace
         }
     }
 
+    // JC2_TRACE_SAVE=1 (bring-up aid): the save data CRC check 0x166390(data, size, crc offset?) and the CRC itself
+    // 0x166AC0(data, size): arguments, the first words of the data and the result.
+    constexpr uint32_t kSaveCheck = 0x00166390u, kSaveCrc = 0x00166AC0u;
+    PS2Runtime::RecompiledFunction g_saveCheck = nullptr, g_saveCrc = nullptr;
+
+    void saveCheckTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t a0 = getRegU32(ctx, 4), a1 = getRegU32(ctx, 5), a2 = getRegU32(ctx, 6), ra = getRegU32(ctx, 31);
+        const bool check = ctx->pc == kSaveCheck;
+        (check ? g_saveCheck : g_saveCrc)(rdram, ctx, runtime);
+        std::fprintf(stderr, "[jc2:save] %s(0x%x, 0x%x, 0x%x) ra=0x%x data=%08x %08x %08x -> 0x%x\n",
+                     check ? "check" : "crc", a0, a1, a2, ra, rd32(rdram, a0), rd32(rdram, a0 + 4u), rd32(rdram, a0 + 8u),
+                     getRegU32(ctx, 2));
+    }
+
     constexpr uint32_t kScriptCommands[] = {0x001EB5D0u, 0x001F4B20u, 0x001F3390u};
     std::map<uint32_t, PS2Runtime::RecompiledFunction> g_scriptCommands;
 
@@ -525,6 +540,13 @@ namespace
             g_pcmTraceLeft = trace && *trace ? static_cast<uint32_t>(std::strtoul(trace, nullptr, 0)) : 0u;
             if (g_pcmTraceLeft != 0u && (g_pcmCallback = runtime.lookupFunction(kPcmCallback)))
                 runtime.registerFunction(kPcmCallback, &pcmCallbackTrace);
+        }
+        if (const char *trace = std::getenv("JC2_TRACE_SAVE"); trace && *trace == '1')
+        {
+            if ((g_saveCheck = runtime.lookupFunction(kSaveCheck)))
+                runtime.registerFunction(kSaveCheck, &saveCheckTrace);
+            if ((g_saveCrc = runtime.lookupFunction(kSaveCrc)))
+                runtime.registerFunction(kSaveCrc, &saveCheckTrace);
         }
         {
             const char *trace = std::getenv("JC2_TRACE_PUMP");

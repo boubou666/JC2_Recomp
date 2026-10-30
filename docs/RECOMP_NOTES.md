@@ -328,3 +328,19 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   uColorKeep). Boot 121, same route to the Wormhole Forest: 59.2-60 fps, frame work 7-14 ms mean and 12-27 ms worst
   in the throne room and the forest, 2-3.5 ms in menus: about as before the merge (7.5-15.7 / 18-26 ms), so JC2's
   in-game cost is not the CLUT read-backs it removed. Still the VIF unpack, GSMem::WriteP8 and the GS worker spin.
+
+## Play sessions and saves (2026-10-30)
+
+- `scripts/play.sh [minutes]`: the owner plays (one bench slot, a screenshot every 10 s and the log in
+  build/play/<time>/; `JC2_TRACE_SCRIPT=1` passes through). Closing the window now ends the process (fork): the
+  game thread never stops on its own, so the runtime exits 3 s after the window closes.
+- Saving works through the libmc HLE (game/mc0/BASLUS-20309MAYU2: icon.sys, three icons, the save file and two
+  slot files of 141940 bytes). Loading showed every slot "Unregistered" (boots 125-126): the header read is right
+  and its CRC (0x166390/0x166AC0, CRC32 of the first 0x4C bytes, at 0x4C) passes, but the slot list (0x230980) then
+  wants sceMcGetDir entry slot+6 to be 141940 bytes long: a card lists a directory in creation order (., ..,
+  icon.sys, the icons, then the slots), and the HLE listed names alphabetically. Fix (fork): sceMcGetDir lists by
+  the host file's creation time (Windows), then name. Boot 127: "Load Successful", back in the forest.
+  `JC2_TRACE_SAVE=1` logs the CRC checks; the HLE logs each sceMcOpen (path, flags) and sceMcRead (first word).
+- Open from the owner's first session: the throne-room scene with Mahbu after the forest stops (game alive, 60 fps,
+  a script waiting); the picture shakes up and down by about a line (an interlace half-line offset every other
+  frame, the CPU GS's stabiliser has no native equivalent yet).

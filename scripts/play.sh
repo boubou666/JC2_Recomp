@@ -11,4 +11,4 @@ dir="$ROOT/build/play/$(date +%Y%m%d-%H%M)"
 mkdir -p "$dir"
 echo "screenshots and log: $dir"
 exec bash "$ROOT/scripts/bench_run.sh" "$minutes" "JC2 play session (the owner plays, screenshots every ${PLAY_SHOT:-10} s)" \
-    bash -c "export JC2_FPS=1 PS2X_CAPTURE_DIR='$dir' PS2X_CAPTURE_INTERVAL='${PLAY_SHOT:-10}'; bash '$ROOT/scripts/run.sh' > '$dir/game.log' 2>&1"
+    bash -c "export JC2_FPS=1 JC2_TRACE_SCRIPT='${JC2_TRACE_SCRIPT:-}' PS2X_CAPTURE_DIR='$dir' PS2X_CAPTURE_INTERVAL='${PLAY_SHOT:-10}'; bash '$ROOT/scripts/run.sh' > '$dir/game.log' 2>&1"
