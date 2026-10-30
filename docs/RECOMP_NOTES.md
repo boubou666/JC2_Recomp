@@ -282,3 +282,9 @@ VP2S_Recomp `tools/find_entry_points.py`, `tools/wrap_elf.py`.
   4-byte sub-header and copies the big-endian PCM into the game's ring (0x1590E0) without swapping; the swap happens
   later, on the way to the SPU2 (JC2's stream to the IOP, record at 0x89DD40, chunks by sceSifSetDma 0x486920,
   acknowledged through EE RPC sid 0x10001). Next: where the swap is done and why some chunks are played unswapped.
+- Correction (same night): the movie PCM is little-endian (decoded from W01.PSS: smooth as LE, 40 zero crossings per
+  256 samples as BE), so nothing swaps it. The "swapped" runs are the audio one byte off. Every audio packet of every
+  movie has an odd payload (ff a0 00 00 + an odd number of PCM bytes), so samples straddle packets and any stage
+  that is not byte-exact flips the alignment. The game's copy into its ring (0x1590E0 -> memcpy 0x152550, byte to
+  quadword loops) is byte-exact. Still to find: the stage that drops or adds a byte (asked TMB, who overrides its
+  movie PCM callback).
