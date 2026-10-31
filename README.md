@@ -44,6 +44,20 @@ with their dialogue, then free control from the Jade Throne Room out to the Worm
 | Linux build | ⏳ |
 | Widescreen, higher internal resolution | ⏳ |
 
+**Native port** (no PS2 hardware emulation left, not even a small part: the shared goal of the fork's ports). Native
+means the game's draws built straight from its own data (vertices, matrices, materials), with no GIF packet, no GS
+state machine and no copy of GS memory in between.
+
+| Layer | |
+|---|:---:|
+| IOP modules (13) recompiled to C++, none interpreted | ✅ |
+| Sound and IOP on the PC's clock | 🔧 |
+| No paraLLEl-GS: OpenGL on the GPU | ✅ |
+| Frame loop on the PC's clock (60 fps, no vblank pacing) | ✅ |
+| VU1 microcode compiled ahead of time (`ps2_vu_aot`), no VU interpreter | ✅ |
+| VU1 programs translated to C++, drawn from the game's data instead of VU1 microcode | ⏳ |
+| Native draws from the game's data, no GIF packet and no GS front end | ⏳ |
+
 ✅ works · 🔧 in progress · ⏳ not reached yet
 
 [docs/RECOMP_NOTES.md](docs/RECOMP_NOTES.md) records how the port is brought up, every fix and how it was found, and
